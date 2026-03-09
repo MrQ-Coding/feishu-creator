@@ -1,20 +1,24 @@
 #!/usr/bin/env node
 
 import express from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import type { Server as HttpServer } from "node:http";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./mcp/app.js";
 import { getConfig } from "./config.js";
-import { persistUserEnv } from "./feishu/userAuthEnv.js";
+import {
+  persistUserEnv,
+  persistUserRefreshTokenInvalidation,
+} from "./feishu/userAuthEnv.js";
 import { Logger } from "./logger.js";
 import { createAppContext, type AppContext } from "./appContext.js";
 
 function detectMode(configMode: "auto" | "stdio" | "http"): "stdio" | "http" {
   if (process.argv.includes("--stdio")) return "stdio";
   if (process.argv.includes("--http")) return "http";
-  if (configMode === "auto") return "http";
+  if (configMode === "auto") return "stdio";
   return configMode;
 }
 
@@ -51,18 +55,143 @@ function maskToken(token: string): string {
   return `${token.slice(0, 6)}...${token.slice(-4)}`;
 }
 
+function extractBearerToken(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  const match = normalized.match(/^Bearer\s+(.+)$/i);
+  const token = match?.[1]?.trim();
+  return token && token.length > 0 ? token : undefined;
+}
+
+function secureTokenEqual(expected: string, actual: string): boolean {
+  const expectedBuffer = Buffer.from(expected);
+  const actualBuffer = Buffer.from(actual);
+  if (expectedBuffer.length !== actualBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function createShutdownHandler(cleanup: () => Promise<void>): (exitCode?: number) => void {
+  let shutdownPromise: Promise<void> | undefined;
+  let finalized = false;
+
+  const finalize = (exitCode: number) => {
+    if (finalized) {
+      return;
+    }
+    finalized = true;
+    process.exit(exitCode);
+  };
+
+  return (exitCode = 0) => {
+    if (shutdownPromise) {
+      return;
+    }
+
+    shutdownPromise = (async () => {
+      await cleanup();
+      finalize(exitCode);
+    })();
+
+    // Force process termination if cleanup stalls on hidden handles.
+    setTimeout(() => finalize(exitCode), 1000).unref();
+  };
+}
+
+function createStdioShutdownHandler(
+  server: ReturnType<typeof createMcpServer>,
+  context: AppContext,
+): (exitCode?: number) => void {
+  return createShutdownHandler(async () => {
+    try {
+      await server.close();
+    } catch {
+      // Ignore close errors during shutdown.
+    }
+
+    try {
+      await context.shutdown();
+    } catch {
+      // Ignore cleanup errors during shutdown.
+    }
+  });
+}
+
+type McpServerInstance = ReturnType<typeof createMcpServer>;
+
+interface HttpSession {
+  server: McpServerInstance;
+  transport: StreamableHTTPServerTransport;
+}
+
 async function runStdio(context: AppContext): Promise<void> {
   // Never print logs to stdout/stderr in stdio mode.
   Logger.setEnabled(false);
   const server = createMcpServer(context);
   const transport = new StdioServerTransport();
+  const shutdown = createStdioShutdownHandler(server, context);
+  const handleStdinClosure = () => shutdown(0);
+  const handleStdoutClose = () => shutdown(0);
+  const handleStdoutError = (error: NodeJS.ErrnoException) => {
+    shutdown(error.code === "EPIPE" ? 0 : 1);
+  };
+  const handleSignal = () => shutdown(0);
+
+  process.stdin.once("end", handleStdinClosure);
+  process.stdin.once("close", handleStdinClosure);
+  process.stdout.once("close", handleStdoutClose);
+  process.stdout.once("error", handleStdoutError);
+  process.once("SIGINT", handleSignal);
+  process.once("SIGTERM", handleSignal);
+
   await server.connect(transport);
 }
 
 async function runHttp(context: AppContext): Promise<void> {
   const app = express();
-  const transports: Record<string, StreamableHTTPServerTransport> = {};
+  const sessions = new Map<string, HttpSession>();
   const port = context.config.server.port;
+  const bindHost = context.config.server.httpBindHost || "127.0.0.1";
+  const requireMcpAuth = context.config.server.httpRequireAuth;
+  const mcpAuthToken = context.config.server.httpAuthToken;
+  if (requireMcpAuth && !mcpAuthToken) {
+    throw new Error(
+      "MCP HTTP auth is enabled but MCP_HTTP_AUTH_TOKEN is not configured.",
+    );
+  }
+
+  const closeHttpServer = async (server: HttpServer): Promise<void> => {
+    if (!server.listening) {
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve();
+      });
+    });
+  };
+
+  const closeSession = async (sessionId: string): Promise<void> => {
+    const session = sessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+
+    sessions.delete(sessionId);
+    await session.transport.close().catch(() => undefined);
+    await session.server.close().catch(() => undefined);
+  };
+
+  const closeAllSessions = async (): Promise<void> => {
+    await Promise.all(Array.from(sessions.keys(), (sessionId) => closeSession(sessionId)));
+  };
 
   app.get("/health", (_req, res) => {
     res.status(200).json({
@@ -75,7 +204,6 @@ async function runHttp(context: AppContext): Promise<void> {
   app.get("/callback", async (req, res) => {
     const code = pickFirstQueryString(req.query.code);
     const state = pickFirstQueryString(req.query.state);
-    const envFile = pickFirstQueryString(req.query.envFile) ?? ".env";
     const writeToEnv = parseBooleanQuery(
       pickFirstQueryString(req.query.writeToEnv),
       true,
@@ -87,6 +215,22 @@ async function runHttp(context: AppContext): Promise<void> {
         .send(
           "<html><body><h3>OAuth callback failed</h3><p>Missing required query parameter: code</p></body></html>",
         );
+      return;
+    }
+    if (!state) {
+      res
+        .status(400)
+        .send(
+          "<html><body><h3>OAuth callback failed</h3><p>Missing required query parameter: state</p></body></html>",
+        );
+      return;
+    }
+    const stateCheck = context.authManager.verifyAndConsumeUserAuthorizeState(state);
+    if (!stateCheck.valid) {
+      res.status(400).send(`<!doctype html>
+<html><body><h3>OAuth callback failed</h3><p>${escapeHtml(
+        stateCheck.reason ?? "Invalid OAuth state.",
+      )}</p></body></html>`);
       return;
     }
 
@@ -105,9 +249,11 @@ async function runHttp(context: AppContext): Promise<void> {
       if (writeToEnv) {
         try {
           persistedEnvPath = await persistUserEnv({
-            envFile,
+            envFile: ".env",
             accessToken: tokenResult.accessToken,
+            accessTokenExpiresAt: tokenResult.expiresAtUnixSec,
             refreshToken: tokenResult.refreshToken,
+            refreshTokenExpiresAt: tokenResult.refreshTokenExpiresAtUnixSec,
           });
         } catch (error) {
           persistWarning = error instanceof Error ? error.message : String(error);
@@ -116,7 +262,7 @@ async function runHttp(context: AppContext): Promise<void> {
       }
 
       Logger.info(
-        `User OAuth callback succeeded (effectiveAuthType=user, state=${state ?? ""})`,
+        `User OAuth callback succeeded (effectiveAuthType=user, state=${state})`,
       );
 
       const warningHtml = persistWarning
@@ -146,7 +292,10 @@ async function runHttp(context: AppContext): Promise<void> {
       tokenResult.refreshToken ? maskToken(tokenResult.refreshToken) : "<none>",
     )}</code></p>
     <p>Token expires at (unix sec): <code>${tokenResult.expiresAtUnixSec}</code></p>
-    <p>State: <code>${escapeHtml(state ?? "<empty>")}</code></p>
+    <p>Refresh token expires at (unix sec): <code>${escapeHtml(
+      String(tokenResult.refreshTokenExpiresAtUnixSec ?? "<unknown>"),
+    )}</code></p>
+    <p>State: <code>${escapeHtml(state)}</code></p>
     ${envPathHtml}
     ${warningHtml}
     <p>Now you can close this page and continue in MCP tools.</p>
@@ -169,31 +318,59 @@ async function runHttp(context: AppContext): Promise<void> {
     }
   });
 
+  app.use("/mcp", (req, res, next) => {
+    if (!requireMcpAuth) {
+      next();
+      return;
+    }
+    const authHeader = req.header("authorization");
+    const bearerToken = extractBearerToken(authHeader);
+    const fallbackToken = req.header("x-mcp-token")?.trim();
+    const candidateToken = bearerToken ?? (fallbackToken || undefined);
+    if (
+      !candidateToken ||
+      !mcpAuthToken ||
+      !secureTokenEqual(mcpAuthToken, candidateToken)
+    ) {
+      res.status(401).json({
+        jsonrpc: "2.0",
+        error: { code: -32001, message: "Unauthorized" },
+        id: null,
+      });
+      return;
+    }
+    next();
+  });
   app.use("/mcp", express.json());
 
   app.post("/mcp", async (req, res) => {
     try {
       const sessionId = req.headers["mcp-session-id"] as string | undefined;
-      let transport: StreamableHTTPServerTransport;
+      let session: HttpSession | undefined;
 
-      if (sessionId && transports[sessionId]) {
-        transport = transports[sessionId];
+      if (sessionId) {
+        session = sessions.get(sessionId);
+      }
+
+      if (session) {
+        // Existing stateful HTTP session.
       } else if (!sessionId && isInitializeRequest(req.body)) {
-        transport = new StreamableHTTPServerTransport({
+        const server = createMcpServer(context);
+        const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (id) => {
-            transports[id] = transport;
+            sessions.set(id, { server, transport });
           },
         });
 
         transport.onclose = () => {
           if (transport.sessionId) {
-            delete transports[transport.sessionId];
+            void closeSession(transport.sessionId);
           }
         };
 
-        const server = createMcpServer(context);
         await server.connect(transport);
+        session = { server, transport };
       } else {
         res.status(400).json({
           jsonrpc: "2.0",
@@ -203,7 +380,7 @@ async function runHttp(context: AppContext): Promise<void> {
         return;
       }
 
-      await transport.handleRequest(req, res, req.body);
+      await session.transport.handleRequest(req, res, req.body);
     } catch (error) {
       Logger.error("HTTP MCP request failed", error);
       if (!res.headersSent) {
@@ -218,29 +395,60 @@ async function runHttp(context: AppContext): Promise<void> {
 
   app.get("/mcp", async (req, res) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
-    if (!sessionId || !transports[sessionId]) {
+    const session = sessionId ? sessions.get(sessionId) : undefined;
+    if (!sessionId || !session) {
       res.status(400).send("Invalid or missing session ID");
       return;
     }
-    await transports[sessionId].handleRequest(req, res);
+    await session.transport.handleRequest(req, res);
   });
 
   app.delete("/mcp", async (req, res) => {
     const sessionId = req.headers["mcp-session-id"] as string | undefined;
-    if (!sessionId || !transports[sessionId]) {
+    const session = sessionId ? sessions.get(sessionId) : undefined;
+    if (!sessionId || !session) {
       res.status(400).send("Invalid or missing session ID");
       return;
     }
-    await transports[sessionId].handleRequest(req, res);
-    delete transports[sessionId];
+    await session.transport.handleRequest(req, res);
+    await closeSession(sessionId);
   });
 
-  app.listen(port, "0.0.0.0", () => {
-    Logger.info(`feishu-creator listening on :${port}`);
+  const httpServer = app.listen(port, bindHost, () => {
+    Logger.info(`feishu-creator listening on ${bindHost}:${port}`);
     Logger.info(`health: http://localhost:${port}/health`);
     Logger.info(`mcp:    http://localhost:${port}/mcp`);
     Logger.info(`oauth:  http://localhost:${port}/callback`);
+    if (requireMcpAuth) {
+      Logger.info("mcp auth: enabled (Authorization: Bearer <MCP_HTTP_AUTH_TOKEN>)");
+    } else {
+      Logger.warn("mcp auth: disabled (MCP_HTTP_REQUIRE_AUTH=false)");
+    }
   });
+
+  const shutdown = createShutdownHandler(async () => {
+    try {
+      await closeAllSessions();
+    } catch {
+      // Ignore session close errors during shutdown.
+    }
+
+    try {
+      await closeHttpServer(httpServer);
+    } catch {
+      // Ignore HTTP server close errors during shutdown.
+    }
+
+    try {
+      await context.shutdown();
+    } catch {
+      // Ignore cleanup errors during shutdown.
+    }
+  });
+
+  const handleSignal = () => shutdown(0);
+  process.once("SIGINT", handleSignal);
+  process.once("SIGTERM", handleSignal);
 }
 
 async function main(): Promise<void> {
@@ -251,23 +459,34 @@ async function main(): Promise<void> {
     const envPath = await persistUserEnv({
       envFile: ".env",
       accessToken: tokenResult.accessToken,
+      accessTokenExpiresAt: tokenResult.expiresAtUnixSec,
       refreshToken: tokenResult.refreshToken,
+      refreshTokenExpiresAt: tokenResult.refreshTokenExpiresAtUnixSec,
     });
     Logger.info(`Persisted refreshed user token to ${envPath}`);
   });
+  context.authManager.setUserTokenInvalidationHandler(async (tokenState) => {
+    const envPath = await persistUserRefreshTokenInvalidation({ envFile: ".env" });
+    Logger.warn(
+      `Persisted invalid refresh token state to ${envPath}: ${tokenState.reason}`,
+    );
+  });
+  context.authManager.startBackgroundRefresh();
 
   Logger.info(
     `Starting feishu-creator in ${mode} mode (feishuAuthType=${config.feishu.authType})`,
   );
 
   if (config.feishu.authType === "user") {
-    if (config.feishu.userRefreshToken?.trim()) {
-      context.authManager.invalidateCachedAccessToken(
-        "startup preflight with configured user refresh token",
+    try {
+      await context.authManager.getAccessToken();
+      Logger.info("User auth startup preflight succeeded");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      Logger.warn(
+        `User auth startup preflight failed: ${message}. Service will continue to run so you can recover auth via /callback or auth tools.`,
       );
     }
-    await context.authManager.getAccessToken();
-    Logger.info("User auth startup preflight succeeded");
   }
 
   if (mode === "stdio") {

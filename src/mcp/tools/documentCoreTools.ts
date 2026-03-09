@@ -127,12 +127,12 @@ export function registerDocumentCoreTools(
 
   server.tool(
     "delete_feishu_document",
-    "Delete a Feishu drive docx file by ID/URL. For wiki-backed docs, behavior depends on FEISHU_WIKI_DELETE_STRATEGY; default is clearing all document content.",
+    "Delete a Feishu document/wiki node by browser-based wiki deletion flow.",
     {
       documentId: z
         .string()
         .describe(
-          "Docx ID/URL, or wiki token/URL (wiki-backed inputs use clear-content fallback).",
+          "Docx ID/URL, or wiki token/URL.",
         ),
       documentType: z
         .enum(["document", "wiki"])
@@ -160,7 +160,7 @@ export function registerDocumentCoreTools(
 
   server.tool(
     "batch_delete_feishu_documents",
-    "Delete multiple Feishu documents or wiki nodes in sequence. When FEISHU_WIKI_DELETE_STRATEGY=playwright, wiki deletions reuse the same built-in Playwright browser session for better throughput.",
+    "Delete multiple Feishu documents or wiki nodes in sequence using browser-based wiki deletion flow.",
     {
       documents: z
         .array(
@@ -168,7 +168,7 @@ export function registerDocumentCoreTools(
             documentId: z
               .string()
               .describe(
-                "Docx ID/URL, or wiki token/URL (wiki-backed inputs use the configured wiki delete strategy).",
+                "Docx ID/URL, or wiki token/URL.",
               ),
             documentType: z
               .enum(["document", "wiki"])

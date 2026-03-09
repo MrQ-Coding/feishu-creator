@@ -317,10 +317,16 @@ export interface DeleteDocumentResult {
   deletedDocumentId: string;
   deleted: boolean;
   notFound: boolean;
-  deletionMode?: 'hard_delete' | 'clear_content' | 'playwright';
-  clearedBlockCount?: number;
+  deletionMode?: 'browser_delete';
   note?: string;
   taskId?: string;
+  postDeleteCheck?: {
+    attempted: boolean;
+    authType: 'tenant' | 'user';
+    verifiedDeleted: boolean;
+    notFound: boolean;
+    error?: string;
+  };
 }
 
 export interface BatchDeleteDocumentItemInput {

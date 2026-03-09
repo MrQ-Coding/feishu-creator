@@ -1,8 +1,11 @@
-import { detectDocumentType, extractDocumentId } from '../../feishu/document.js';
+import {
+  detectDocumentType,
+  extractDocumentId,
+  extractWikiToken,
+} from '../../feishu/document.js';
 import type { DocumentEditRuntime } from './context.js';
-import { deleteChildrenRange } from './blockMutations.js';
-import { isNotFoundError, isPermissionDeniedError } from './helpers.js';
-import type { DeleteDocumentInput, DeleteDocumentResult, WikiNodeLookupResponse } from './types.js';
+import { isNotFoundError } from './helpers.js';
+import type { DeleteDocumentInput, DeleteDocumentResult } from './types.js';
 
 export async function deleteDocumentCore(
   runtime: DocumentEditRuntime,
@@ -13,23 +16,12 @@ export async function deleteDocumentCore(
     throw new Error('documentId is required.');
   }
 
-  let sourceType = input.documentType ?? detectDocumentType(sourceDocumentId);
-  let wikiBindingFromNodeToken: { nodeToken?: string; spaceId?: string; title?: string } | null =
-    null;
-  if (
-    !input.documentType &&
-    sourceType === 'document' &&
-    isLikelyRawToken(sourceDocumentId)
-  ) {
-    wikiBindingFromNodeToken = await probeWikiNodeByNodeToken(runtime, sourceDocumentId);
-    if (wikiBindingFromNodeToken) {
-      sourceType = 'wiki';
-    }
-  }
+  const sourceType = input.documentType ?? detectDocumentType(sourceDocumentId);
   const ignoreNotFound = input.ignoreNotFound ?? false;
-  let deletedDocumentId: string;
+
+  let deleteTarget: ResolvedBrowserDeleteTarget;
   try {
-    deletedDocumentId = await resolveDocumentIdForDelete(
+    deleteTarget = await resolveBrowserDeleteTarget(
       runtime,
       sourceDocumentId,
       sourceType,
@@ -47,101 +39,168 @@ export async function deleteDocumentCore(
     throw error;
   }
 
-  const wikiBinding =
-    sourceType === 'wiki'
-      ? (wikiBindingFromNodeToken ??
-        (await lookupWikiNodeByNodeToken(runtime, sourceDocumentId)))
-      : await lookupWikiNodeByDocxToken(runtime, deletedDocumentId);
-  if (sourceType === 'wiki' || wikiBinding) {
-    if (runtime.config.wikiDeleteStrategy === 'playwright') {
-      const nodeToken = wikiBinding?.nodeToken ?? sourceDocumentId;
-      if (!nodeToken) {
-        throw new Error('Cannot resolve wiki node token for Playwright deletion.');
-      }
-      await runtime.wikiBrowserDeletionService.deleteWikiNode({
-        nodeToken,
-        spaceId: wikiBinding?.spaceId,
-        title: wikiBinding?.title,
-      });
-      runtime.invalidateDocumentState(deletedDocumentId);
-      runtime.documentInfoService.invalidateByPrefix('wiki');
-      runtime.locateCache.invalidatePrefix(`locate:${deletedDocumentId}:`);
-      return {
-        sourceType,
-        sourceDocumentId,
-        deletedDocumentId,
-        deleted: true,
-        notFound: false,
-        deletionMode: 'playwright',
-        note: 'Wiki node deleted through built-in Playwright automation.',
-      };
-    }
-
-    const clearedBlockCount = await clearDocumentContent(runtime, deletedDocumentId);
-    if (sourceType === 'wiki' || wikiBinding) {
-      runtime.documentInfoService.invalidateByPrefix('wiki');
-      runtime.locateCache.invalidatePrefix(`locate:${deletedDocumentId}:`);
-    }
-    return {
-      sourceType,
-      sourceDocumentId,
-      deletedDocumentId,
-      deleted: false,
-      notFound: false,
-      deletionMode: 'clear_content',
-      clearedBlockCount,
-      note:
-        'Document is wiki-backed. OpenAPI cannot delete wiki node; content has been cleared instead.',
-    };
-  }
-
   try {
-    const data = await runtime.feishuClient.request<{ task_id?: string }>(
-      `/drive/v1/files/${deletedDocumentId}`,
-      'DELETE',
-      undefined,
-      { type: 'docx' },
+    await runtime.wikiBrowserDeletionService.deleteWikiNode(
+      deleteTarget.browserDeleteInput,
     );
-    runtime.invalidateDocumentState(deletedDocumentId);
+    if (deleteTarget.documentId) {
+      runtime.invalidateDocumentState(deleteTarget.documentId);
+    }
 
     return {
       sourceType,
       sourceDocumentId,
-      deletedDocumentId,
+      deletedDocumentId: deleteTarget.documentId ?? sourceDocumentId,
       deleted: true,
       notFound: false,
-      deletionMode: 'hard_delete',
-      taskId: data.task_id,
+      deletionMode: 'browser_delete',
+      postDeleteCheck: await verifyDeletedResource(
+        runtime,
+        deleteTarget.verifyTarget,
+      ),
     };
   } catch (error) {
     if (ignoreNotFound && isNotFoundError(error)) {
       return {
         sourceType,
         sourceDocumentId,
-        deletedDocumentId,
+        deletedDocumentId: deleteTarget.documentId ?? sourceDocumentId,
         deleted: false,
         notFound: true,
-      };
-    }
-    if (isPermissionDeniedError(error)) {
-      const clearedBlockCount = await clearDocumentContent(runtime, deletedDocumentId);
-      return {
-        sourceType,
-        sourceDocumentId,
-        deletedDocumentId,
-        deleted: false,
-        notFound: false,
-        deletionMode: 'clear_content',
-        clearedBlockCount,
-        note: 'Drive hard delete is forbidden; content has been cleared instead.',
       };
     }
     throw error;
   }
 }
 
-function isLikelyRawToken(value: string): boolean {
-  return /^[a-zA-Z0-9_-]{10,}$/.test(value);
+interface BrowserDeleteInput {
+  nodeToken?: string;
+  documentId?: string;
+  spaceId?: string;
+  title?: string;
+}
+
+interface ResolvedBrowserDeleteTarget {
+  documentId?: string;
+  browserDeleteInput: BrowserDeleteInput;
+  verifyTarget: {
+    documentId: string;
+    documentType: 'document' | 'wiki';
+  };
+}
+
+async function verifyDeletedResource(
+  runtime: DocumentEditRuntime,
+  target: {
+    documentId: string;
+    documentType: 'document' | 'wiki';
+  },
+): Promise<NonNullable<DeleteDocumentResult['postDeleteCheck']>> {
+  try {
+    await runtime.documentInfoService.getDocumentInfo(target.documentId, target.documentType);
+    return {
+      attempted: true,
+      authType: runtime.config.authType,
+      verifiedDeleted: false,
+      notFound: false,
+    };
+  } catch (error) {
+    if (isNotFoundError(error)) {
+      return {
+        attempted: true,
+        authType: runtime.config.authType,
+        verifiedDeleted: true,
+        notFound: true,
+      };
+    }
+    return {
+      attempted: true,
+      authType: runtime.config.authType,
+      verifiedDeleted: false,
+      notFound: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function resolveBrowserDeleteTarget(
+  runtime: DocumentEditRuntime,
+  sourceDocumentId: string,
+  sourceType: 'document' | 'wiki',
+): Promise<ResolvedBrowserDeleteTarget> {
+  if (sourceType === 'wiki') {
+    const wikiInfo = await runtime.documentInfoService.getDocumentInfo(
+      sourceDocumentId,
+      'wiki',
+    );
+    const nodeToken =
+      pickString(wikiInfo, ['node_token', 'wiki_token']) ??
+      extractWikiToken(sourceDocumentId) ??
+      undefined;
+    const documentId =
+      pickString(wikiInfo, ['documentId', 'obj_token']) ??
+      extractDocumentId(sourceDocumentId) ??
+      undefined;
+    const spaceId = pickString(wikiInfo, ['space_id']);
+    const title = pickString(wikiInfo, ['title']);
+
+    if (!nodeToken && !documentId) {
+      throw new Error('Cannot resolve browser delete target from wiki input.');
+    }
+
+    return {
+      documentId,
+      browserDeleteInput: {
+        nodeToken,
+        documentId,
+        spaceId,
+        title,
+      },
+      verifyTarget: nodeToken
+        ? { documentId: nodeToken, documentType: 'wiki' }
+        : { documentId: documentId!, documentType: 'document' },
+    };
+  }
+
+  const normalizedDocumentId = extractDocumentId(sourceDocumentId);
+  if (!normalizedDocumentId) {
+    throw new Error('Invalid document ID or document URL.');
+  }
+
+  const wikiInfo = await tryResolveWikiInfo(runtime, sourceDocumentId);
+  if (wikiInfo) {
+    const nodeToken =
+      pickString(wikiInfo, ['node_token', 'wiki_token']) ??
+      extractWikiToken(sourceDocumentId) ??
+      undefined;
+    const documentId =
+      pickString(wikiInfo, ['documentId', 'obj_token']) ?? normalizedDocumentId;
+    const spaceId = pickString(wikiInfo, ['space_id']);
+    const title = pickString(wikiInfo, ['title']);
+    return {
+      documentId,
+      browserDeleteInput: {
+        nodeToken,
+        documentId,
+        spaceId,
+        title,
+      },
+      verifyTarget: nodeToken
+        ? { documentId: nodeToken, documentType: 'wiki' }
+        : { documentId, documentType: 'document' },
+    };
+  }
+
+  return {
+    documentId: normalizedDocumentId,
+    browserDeleteInput: {
+      documentId: normalizedDocumentId,
+    },
+    verifyTarget: {
+      documentId: normalizedDocumentId,
+      documentType: 'document',
+    },
+  };
 }
 
 async function resolveDocumentId(
@@ -151,24 +210,23 @@ async function resolveDocumentId(
 ): Promise<string> {
   if (sourceType === 'document') {
     const normalized = extractDocumentId(inputId);
-    if (!normalized) {
-      throw new Error('Invalid document ID or document URL.');
+    if (normalized) {
+      return normalized;
     }
-    return normalized;
+
+    const fromWikiNode = await tryResolveDocumentIdFromWikiNode(runtime, inputId);
+    if (fromWikiNode) {
+      return fromWikiNode;
+    }
+
+    throw new Error('Invalid document ID or document URL.');
   }
 
-  const info = await runtime.documentInfoService.getDocumentInfo(inputId, 'wiki');
-  const fromInfo =
-    typeof info.documentId === 'string'
-      ? info.documentId
-      : typeof info.obj_token === 'string'
-        ? info.obj_token
-        : '';
-  const normalized = extractDocumentId(fromInfo) ?? fromInfo;
-  if (!normalized) {
+  const fromWikiNode = await tryResolveDocumentIdFromWikiNode(runtime, inputId);
+  if (!fromWikiNode) {
     throw new Error('Cannot resolve document ID from wiki node.');
   }
-  return normalized;
+  return fromWikiNode;
 }
 
 export async function resolveDocumentIdForDelete(
@@ -179,26 +237,20 @@ export async function resolveDocumentIdForDelete(
   return resolveDocumentId(runtime, inputId, sourceType);
 }
 
-async function lookupWikiNodeByDocxToken(
+async function tryResolveDocumentIdFromWikiNode(
   runtime: DocumentEditRuntime,
-  documentId: string,
-): Promise<{ nodeToken?: string; spaceId?: string; title?: string } | null> {
+  wikiTokenOrUrl: string,
+): Promise<string | null> {
   try {
-    const data = await runtime.feishuClient.request<WikiNodeLookupResponse>(
-      '/wiki/v2/spaces/get_node',
-      'GET',
-      undefined,
-      {
-        token: documentId,
-        obj_type: 'docx',
-      },
-    );
-    if (!data.node) return null;
-    return {
-      nodeToken: data.node.node_token,
-      spaceId: data.node.space_id,
-      title: data.node.title,
-    };
+    const info = await runtime.documentInfoService.getDocumentInfo(wikiTokenOrUrl, 'wiki');
+    const fromInfo =
+      typeof info.documentId === 'string'
+        ? info.documentId
+        : typeof info.obj_token === 'string'
+          ? info.obj_token
+          : '';
+    const normalized = extractDocumentId(fromInfo) ?? fromInfo;
+    return normalized || null;
   } catch (error) {
     if (isNotFoundError(error)) {
       return null;
@@ -207,52 +259,37 @@ async function lookupWikiNodeByDocxToken(
   }
 }
 
-async function lookupWikiNodeByNodeToken(
+async function tryResolveWikiInfo(
   runtime: DocumentEditRuntime,
-  nodeToken: string,
-): Promise<{ nodeToken?: string; spaceId?: string; title?: string } | null> {
-  try {
-    const info = await runtime.documentInfoService.getDocumentInfo(nodeToken, 'wiki');
-    return {
-      nodeToken,
-      spaceId: typeof info.space_id === 'string' ? info.space_id : undefined,
-      title: typeof info.title === 'string' ? info.title : undefined,
-    };
-  } catch (error) {
-    if (isNotFoundError(error)) {
-      return { nodeToken };
-    }
-    throw error;
+  inputId: string,
+): Promise<Record<string, unknown> | null> {
+  const looksLikeWiki = inputId.includes('/wiki/') || extractWikiToken(inputId) !== null;
+  if (!looksLikeWiki) {
+    return null;
   }
-}
-
-async function probeWikiNodeByNodeToken(
-  runtime: DocumentEditRuntime,
-  nodeToken: string,
-): Promise<{ nodeToken?: string; spaceId?: string; title?: string } | null> {
   try {
-    const info = await runtime.documentInfoService.getDocumentInfo(nodeToken, 'wiki');
-    return {
-      nodeToken,
-      spaceId: typeof info.space_id === 'string' ? info.space_id : undefined,
-      title: typeof info.title === 'string' ? info.title : undefined,
-    };
+    return await runtime.documentInfoService.getDocumentInfo(inputId, 'wiki');
   } catch (error) {
-    if (isNotFoundError(error)) {
+    if (isNotFoundError(error) || isInvalidWikiInput(error)) {
       return null;
     }
     throw error;
   }
 }
 
-async function clearDocumentContent(
-  runtime: DocumentEditRuntime,
-  documentId: string,
-): Promise<number> {
-  const children = await runtime.documentBlockService.getAllChildren(documentId, documentId, 500);
-  const total = children.length;
-  if (total <= 0) return 0;
-  await deleteChildrenRange(runtime, documentId, documentId, 0, total, -1);
-  runtime.documentInfoService.invalidateDocument(documentId);
-  return total;
+function isInvalidWikiInput(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.toLowerCase().includes('invalid wiki token');
+}
+
+function pickString(source: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === 'string' && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
 }

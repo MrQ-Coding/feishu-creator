@@ -1,4 +1,5 @@
 import type { AppConfig } from "../config.js";
+import { randomUUID } from "node:crypto";
 import { Logger } from "../logger.js";
 
 type FeishuConfig = AppConfig["feishu"];
@@ -17,6 +18,7 @@ interface UserTokenRefreshResponse {
   refresh_token?: string;
   expires_in?: number;
   refresh_token_expires_in?: number;
+  refresh_expires_in?: number;
   data?: Record<string, unknown>;
 }
 
@@ -27,6 +29,7 @@ interface UserTokenCodeExchangeResponse {
   refresh_token?: string;
   expires_in?: number;
   refresh_token_expires_in?: number;
+  refresh_expires_in?: number;
   data?: Record<string, unknown>;
 }
 
@@ -43,6 +46,11 @@ export interface UserTokenSetResult {
   accessToken: string;
   refreshToken?: string;
   expiresAtUnixSec: number;
+  refreshTokenExpiresAtUnixSec?: number;
+}
+
+export interface UserTokenInvalidationResult {
+  reason: string;
 }
 
 export interface AuthStatus {
@@ -59,6 +67,9 @@ export interface AuthStatus {
 }
 
 type UserTokenUpdateHandler = (result: UserTokenSetResult) => Promise<void> | void;
+type UserTokenInvalidationHandler = (
+  result: UserTokenInvalidationResult,
+) => Promise<void> | void;
 
 export class FeishuAuthManager {
   private readonly config: FeishuConfig;
@@ -69,18 +80,38 @@ export class FeishuAuthManager {
   private userAccessToken: string | null;
   private userRefreshToken: string | null;
   private userExpiresAt = Number.POSITIVE_INFINITY;
+  private userRefreshTokenExpiresAt: number | null = null;
   private userRefreshPromise: Promise<string> | null = null;
+  private userRefreshBlockedReason: string | null = null;
   private authTypeOverride: "tenant" | "user" | null = null;
   private userTokenUpdateHandler: UserTokenUpdateHandler | null = null;
+  private userTokenInvalidationHandler: UserTokenInvalidationHandler | null = null;
+  private backgroundRefreshEnabled = false;
+  private backgroundRefreshTimer: NodeJS.Timeout | null = null;
+  private readonly oauthStates = new Map<string, number>();
 
   constructor(config: FeishuConfig) {
     this.config = config;
     this.userAccessToken = config.userAccessToken ?? null;
     this.userRefreshToken = config.userRefreshToken ?? null;
+    this.userRefreshTokenExpiresAt =
+      typeof config.userRefreshTokenExpiresAt === "number"
+        ? config.userRefreshTokenExpiresAt
+        : null;
+    if (typeof config.userAccessTokenExpiresAt === "number") {
+      this.userExpiresAt = config.userAccessTokenExpiresAt;
+    } else if (this.userAccessToken && this.userRefreshToken) {
+      // Legacy env files do not persist access-token expiry; force one refresh on startup.
+      this.userExpiresAt = 0;
+    } else if (!this.userAccessToken) {
+      this.userExpiresAt = 0;
+    }
   }
 
-  async getAccessToken(): Promise<string> {
-    if (this.getEffectiveAuthType() === "tenant") {
+  async getAccessToken(
+    authTypeOverride?: "tenant" | "user",
+  ): Promise<string> {
+    if (this.resolveAuthType(authTypeOverride) === "tenant") {
       return this.getTenantAccessToken();
     }
     return this.getUserAccessToken();
@@ -108,11 +139,27 @@ export class FeishuAuthManager {
 
   setAuthTypeOverride(authType?: "tenant" | "user"): "tenant" | "user" {
     this.authTypeOverride = authType ?? null;
-    return this.getEffectiveAuthType();
+    const effective = this.getEffectiveAuthType();
+    this.scheduleBackgroundRefresh();
+    return effective;
   }
 
   setUserTokenUpdateHandler(handler?: UserTokenUpdateHandler): void {
     this.userTokenUpdateHandler = handler ?? null;
+  }
+
+  setUserTokenInvalidationHandler(handler?: UserTokenInvalidationHandler): void {
+    this.userTokenInvalidationHandler = handler ?? null;
+  }
+
+  startBackgroundRefresh(): void {
+    this.backgroundRefreshEnabled = true;
+    this.scheduleBackgroundRefresh();
+  }
+
+  stopBackgroundRefresh(): void {
+    this.backgroundRefreshEnabled = false;
+    this.clearBackgroundRefreshTimer();
   }
 
   buildUserAuthorizeUrl(redirectUri: string, state?: string): string {
@@ -129,6 +176,49 @@ export class FeishuAuthManager {
       url.searchParams.set("state", state.trim());
     }
     return url.toString();
+  }
+
+  issueUserAuthorizeState(state?: string): string {
+    const normalizedState = state?.trim();
+    const effectiveState = normalizedState && normalizedState.length > 0
+      ? normalizedState
+      : randomUUID();
+    const expiresAt =
+      Math.floor(Date.now() / 1000) + this.config.oauthStateTtlSeconds;
+    this.oauthStates.set(effectiveState, expiresAt);
+    return effectiveState;
+  }
+
+  verifyAndConsumeUserAuthorizeState(state: string): {
+    valid: boolean;
+    reason?: string;
+  } {
+    const normalizedState = state.trim();
+    if (!normalizedState) {
+      return { valid: false, reason: "OAuth state is required." };
+    }
+    const expiresAt = this.oauthStates.get(normalizedState);
+    if (!expiresAt) {
+      return { valid: false, reason: "OAuth state is invalid or already consumed." };
+    }
+    this.oauthStates.delete(normalizedState);
+    const now = Math.floor(Date.now() / 1000);
+    if (now > expiresAt) {
+      return { valid: false, reason: "OAuth state has expired." };
+    }
+    return { valid: true };
+  }
+
+  cleanupExpiredOauthStates(): number {
+    const now = Math.floor(Date.now() / 1000);
+    let removed = 0;
+    for (const [state, expiresAt] of this.oauthStates.entries()) {
+      if (now > expiresAt) {
+        this.oauthStates.delete(state);
+        removed += 1;
+      }
+    }
+    return removed;
   }
 
   async exchangeUserAuthorizationCode(
@@ -168,7 +258,9 @@ export class FeishuAuthManager {
         response.access_token,
       )}, refresh_token=${Boolean(response.refresh_token)}, expires_in=${Boolean(
         response.expires_in,
-      )}, refresh_token_expires_in=${Boolean(response.refresh_token_expires_in)}`,
+      )}, refresh_token_expires_in=${Boolean(
+        response.refresh_token_expires_in,
+      )}, refresh_expires_in=${Boolean(response.refresh_expires_in)}`,
     );
     const normalized = this.normalizeUserTokenPayload(response);
     if (
@@ -184,6 +276,7 @@ export class FeishuAuthManager {
       normalized.access_token,
       normalized.refresh_token,
       normalized.expires_in,
+      normalized.refresh_token_expires_in,
     );
   }
 
@@ -191,6 +284,7 @@ export class FeishuAuthManager {
     accessToken: string,
     refreshToken?: string,
     expiresInSec?: number,
+    refreshTokenExpiresInSec?: number,
   ): UserTokenSetResult {
     const normalizedAccess = accessToken.trim();
     if (!normalizedAccess) {
@@ -200,20 +294,34 @@ export class FeishuAuthManager {
     if (refreshToken?.trim()) {
       this.userRefreshToken = refreshToken.trim();
     }
+    this.userRefreshBlockedReason = null;
     const safeExpiresIn =
       typeof expiresInSec === "number" && Number.isFinite(expiresInSec) && expiresInSec > 0
         ? Math.floor(expiresInSec)
         : 7200;
     this.userExpiresAt = Math.floor(Date.now() / 1000) + safeExpiresIn;
+    if (
+      typeof refreshTokenExpiresInSec === "number" &&
+      Number.isFinite(refreshTokenExpiresInSec) &&
+      refreshTokenExpiresInSec > 0
+    ) {
+      this.userRefreshTokenExpiresAt =
+        Math.floor(Date.now() / 1000) + Math.floor(refreshTokenExpiresInSec);
+    }
+    this.scheduleBackgroundRefresh();
     return {
       accessToken: this.userAccessToken,
       refreshToken: this.userRefreshToken ?? undefined,
       expiresAtUnixSec: this.userExpiresAt,
+      refreshTokenExpiresAtUnixSec: this.userRefreshTokenExpiresAt ?? undefined,
     };
   }
 
-  invalidateCachedAccessToken(reason?: string): void {
-    const effectiveAuthType = this.getEffectiveAuthType();
+  invalidateCachedAccessToken(
+    reason?: string,
+    authTypeOverride?: "tenant" | "user",
+  ): void {
+    const effectiveAuthType = this.resolveAuthType(authTypeOverride);
     if (effectiveAuthType === "tenant") {
       this.tenantExpiresAt = 0;
       if (reason) {
@@ -232,10 +340,21 @@ export class FeishuAuthManager {
     return this.authTypeOverride ?? this.config.authType;
   }
 
+  private resolveAuthType(
+    authTypeOverride?: "tenant" | "user",
+  ): "tenant" | "user" {
+    return authTypeOverride ?? this.getEffectiveAuthType();
+  }
+
   private shouldRefresh(expiresAtUnixSec: number): boolean {
     const now = Math.floor(Date.now() / 1000);
     const remaining = expiresAtUnixSec - now;
     return remaining <= this.config.refreshBeforeSeconds;
+  }
+
+  private isExpired(expiresAtUnixSec: number): boolean {
+    const now = Math.floor(Date.now() / 1000);
+    return now >= expiresAtUnixSec;
   }
 
   private async getTenantAccessToken(): Promise<string> {
@@ -284,16 +403,27 @@ export class FeishuAuthManager {
     if (this.userAccessToken) {
       if (
         !Number.isFinite(this.userExpiresAt) ||
-        !this.shouldRefresh(this.userExpiresAt)
+        !this.isExpired(this.userExpiresAt)
       ) {
         return this.userAccessToken;
       }
     }
 
+    if (this.userRefreshToken && this.isRefreshTokenExpired()) {
+      this.markUserRefreshTokenInvalid(
+        `Configured FEISHU_USER_REFRESH_TOKEN expired at unix sec ${this.userRefreshTokenExpiresAt}. Re-run user OAuth authorization.`,
+      );
+    }
     if (!this.userRefreshToken) {
+      if (this.userRefreshBlockedReason) {
+        throw new Error(this.userRefreshBlockedReason);
+      }
       throw new Error(
         "User auth mode requires FEISHU_USER_ACCESS_TOKEN or FEISHU_USER_REFRESH_TOKEN.",
       );
+    }
+    if (this.userRefreshBlockedReason) {
+      throw new Error(this.userRefreshBlockedReason);
     }
 
     if (this.userRefreshPromise) {
@@ -334,7 +464,9 @@ export class FeishuAuthManager {
         response.access_token,
       )}, refresh_token=${Boolean(response.refresh_token)}, expires_in=${Boolean(
         response.expires_in,
-      )}, refresh_token_expires_in=${Boolean(response.refresh_token_expires_in)}`,
+      )}, refresh_token_expires_in=${Boolean(
+        response.refresh_token_expires_in,
+      )}, refresh_expires_in=${Boolean(response.refresh_expires_in)}`,
     );
     const normalized = this.normalizeUserTokenPayload(response);
 
@@ -343,9 +475,13 @@ export class FeishuAuthManager {
       !normalized.access_token ||
       !normalized.expires_in
     ) {
-      throw new Error(
-        `Failed to refresh user_access_token: ${normalized.msg || "unknown error"}`,
-      );
+      const message = `Failed to refresh user_access_token: ${
+        normalized.msg || "unknown error"
+      }`;
+      if (this.isInvalidRefreshTokenMessage(normalized.msg)) {
+        this.markUserRefreshTokenInvalid(message);
+      }
+      throw new Error(message);
     }
 
     this.userAccessToken = normalized.access_token;
@@ -353,13 +489,32 @@ export class FeishuAuthManager {
     if (normalized.refresh_token) {
       this.userRefreshToken = normalized.refresh_token;
     }
+    if (
+      typeof normalized.refresh_token_expires_in === "number" &&
+      Number.isFinite(normalized.refresh_token_expires_in) &&
+      normalized.refresh_token_expires_in > 0
+    ) {
+      this.userRefreshTokenExpiresAt =
+        Math.floor(Date.now() / 1000) + normalized.refresh_token_expires_in;
+    }
+    this.userRefreshBlockedReason = null;
     Logger.info("user_access_token refreshed");
     this.notifyUserTokenUpdated({
       accessToken: this.userAccessToken,
       refreshToken: this.userRefreshToken ?? undefined,
       expiresAtUnixSec: this.userExpiresAt,
+      refreshTokenExpiresAtUnixSec: this.userRefreshTokenExpiresAt ?? undefined,
     });
+    this.scheduleBackgroundRefresh();
     return this.userAccessToken;
+  }
+
+  private isRefreshTokenExpired(): boolean {
+    if (!this.userRefreshTokenExpiresAt) {
+      return false;
+    }
+    const now = Math.floor(Date.now() / 1000);
+    return now >= this.userRefreshTokenExpiresAt;
   }
 
   private notifyUserTokenUpdated(result: UserTokenSetResult): void {
@@ -373,6 +528,82 @@ export class FeishuAuthManager {
         }`,
       );
     });
+  }
+
+  private notifyUserTokenInvalidated(result: UserTokenInvalidationResult): void {
+    if (!this.userTokenInvalidationHandler) {
+      return;
+    }
+    Promise.resolve(this.userTokenInvalidationHandler(result)).catch((error) => {
+      Logger.warn(
+        `Failed to persist invalid user token state: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    });
+  }
+
+  private markUserRefreshTokenInvalid(reason: string): void {
+    const isFirstInvalidation =
+      this.userRefreshBlockedReason !== reason || this.userRefreshToken !== null;
+    this.userRefreshToken = null;
+    this.userRefreshTokenExpiresAt = null;
+    this.userRefreshBlockedReason = reason;
+    this.scheduleBackgroundRefresh();
+    if (isFirstInvalidation) {
+      this.notifyUserTokenInvalidated({ reason });
+    }
+  }
+
+  private scheduleBackgroundRefresh(): void {
+    this.clearBackgroundRefreshTimer();
+    if (!this.backgroundRefreshEnabled) {
+      return;
+    }
+    if (this.getEffectiveAuthType() !== "user") {
+      return;
+    }
+    if (!this.userRefreshToken || this.userRefreshBlockedReason) {
+      return;
+    }
+    if (this.isRefreshTokenExpired()) {
+      this.markUserRefreshTokenInvalid(
+        `Configured FEISHU_USER_REFRESH_TOKEN expired at unix sec ${this.userRefreshTokenExpiresAt}. Re-run user OAuth authorization.`,
+      );
+      return;
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const refreshAt = Number.isFinite(this.userExpiresAt)
+      ? this.userExpiresAt
+      : now + this.config.refreshBeforeSeconds;
+    const delaySec = Math.max(1, refreshAt - now);
+    this.backgroundRefreshTimer = setTimeout(() => {
+      void this.runBackgroundRefresh();
+    }, delaySec * 1000);
+    this.backgroundRefreshTimer.unref();
+  }
+
+  private clearBackgroundRefreshTimer(): void {
+    if (!this.backgroundRefreshTimer) {
+      return;
+    }
+    clearTimeout(this.backgroundRefreshTimer);
+    this.backgroundRefreshTimer = null;
+  }
+
+  private async runBackgroundRefresh(): Promise<void> {
+    try {
+      await this.getUserAccessToken();
+    } catch (error) {
+      Logger.warn(
+        `Background user token refresh failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    } finally {
+      this.scheduleBackgroundRefresh();
+    }
   }
 
   private normalizeUserTokenPayload(
@@ -417,8 +648,22 @@ export class FeishuAuthManager {
           ? response.refresh_token_expires_in
           : typeof nested?.refresh_token_expires_in === "number"
             ? nested.refresh_token_expires_in
+            : typeof response.refresh_expires_in === "number"
+              ? response.refresh_expires_in
+              : typeof nested?.refresh_expires_in === "number"
+                ? nested.refresh_expires_in
             : undefined,
     };
+  }
+
+  private isInvalidRefreshTokenMessage(message?: string): boolean {
+    const normalized = message?.toLowerCase() ?? "";
+    return (
+      normalized.includes("refresh token is invalid") ||
+      normalized.includes("refresh token expired") ||
+      normalized.includes("it may has been used") ||
+      normalized.includes("refresh token has expired")
+    );
   }
 
   private async postJson<T>(url: string, payload: unknown): Promise<T> {

@@ -53,15 +53,17 @@ export function createAppContext(config: AppConfig): AppContext {
     const locateRemoved = documentEditService.cleanupExpired();
     const wikiRemoved = wikiSpaceService.cleanupExpired();
     const wikiTreeRemoved = wikiTreeService.cleanupExpired();
+    const oauthStateRemoved = authManager.cleanupExpiredOauthStates();
     if (
       blocksRemoved > 0 ||
       docRemoved > 0 ||
       locateRemoved > 0 ||
       wikiRemoved > 0 ||
-      wikiTreeRemoved > 0
+      wikiTreeRemoved > 0 ||
+      oauthStateRemoved > 0
     ) {
       Logger.info(
-        `Cache cleanup: documentBlocks=${blocksRemoved}, documentInfo=${docRemoved}, locate=${locateRemoved}, wikiSpaces=${wikiRemoved}, wikiTree=${wikiTreeRemoved}`,
+        `Cache cleanup: documentBlocks=${blocksRemoved}, documentInfo=${docRemoved}, locate=${locateRemoved}, wikiSpaces=${wikiRemoved}, wikiTree=${wikiTreeRemoved}, oauthStates=${oauthStateRemoved}`,
       );
     }
   }, config.feishu.cacheCleanupIntervalSeconds * 1000);
@@ -69,7 +71,8 @@ export function createAppContext(config: AppConfig): AppContext {
 
   const shutdown = async () => {
     clearInterval(cleanupTimer);
-    await wikiBrowserDeletionService.shutdown();
+    await wikiBrowserDeletionService.shutdown().catch(() => undefined);
+    authManager.stopBackgroundRefresh();
   };
 
   return {

@@ -3,8 +3,8 @@ import { detectDocumentType, extractDocumentId } from '../feishu/document.js';
 import type { FeishuClient } from '../feishu/client.js';
 import type { DocumentBlockService } from './documentBlockService.js';
 import type { DocumentInfoService } from './documentInfoService.js';
-import { TtlCache } from '../utils/ttlCache.js';
 import type { WikiBrowserDeletionService } from './wikiBrowserDeletionService.js';
+import { TtlCache } from '../utils/ttlCache.js';
 import type { ProgressiveLocateSectionResult } from './documentEdit/sectionLocator.js';
 import type { DocumentEditRuntime } from './documentEdit/context.js';
 import {

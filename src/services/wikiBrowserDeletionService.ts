@@ -20,7 +20,8 @@ type BrowserFamily = PlaywrightBrowserFamily;
 type PlaywrightModule = typeof import("playwright");
 
 interface DeleteWikiNodeInput {
-  nodeToken: string;
+  nodeToken?: string;
+  documentId?: string;
   spaceId?: string;
   title?: string;
 }
@@ -87,6 +88,7 @@ interface InternalDeleteNodeData {
 interface CurrentWikiContext {
   spaceId?: string;
   nodeToken?: string;
+  documentId?: string;
   title?: string;
 }
 
@@ -124,7 +126,11 @@ export class WikiBrowserDeletionService {
   }
 
   async deleteWikiNodes(inputs: DeleteWikiNodeInput[]): Promise<void> {
-    const normalizedInputs = inputs.filter((item) => item.nodeToken.trim().length > 0);
+    const normalizedInputs = inputs.filter(
+      (item) =>
+        (item.nodeToken?.trim().length ?? 0) > 0 ||
+        (item.documentId?.trim().length ?? 0) > 0,
+    );
     if (normalizedInputs.length <= 0) {
       return;
     }
@@ -137,18 +143,27 @@ export class WikiBrowserDeletionService {
         `Playwright wiki deletion browser target: family=${launchTarget.family}, source=${launchTarget.source}, executable=${launchTarget.executablePath ?? "<playwright-bundled>"}`,
       );
 
-      for (const input of normalizedInputs) {
-        await this.deleteWikiNodeWithRecovery(
-          playwright,
-          launchTarget,
-          input,
-        );
+      try {
+        for (const input of normalizedInputs) {
+          await this.deleteWikiNodeWithRecovery(
+            playwright,
+            launchTarget,
+            input,
+          );
+        }
+      } finally {
+        // Always release the persistent profile lock after each top-level delete call.
+        await this.closeReusableSession();
       }
     });
   }
 
   private buildWikiUrl(nodeToken: string): string {
     return `${this.config.uiBaseUrl.replace(/\/+$/, "")}/wiki/${nodeToken}`;
+  }
+
+  private buildDocumentUrl(documentId: string): string {
+    return `${this.config.uiBaseUrl.replace(/\/+$/, "")}/docx/${documentId}`;
   }
 
   private buildWikiHomeUrl(): string {
@@ -193,6 +208,9 @@ export class WikiBrowserDeletionService {
   ): Promise<void> {
     const targetLabel = this.describeDeleteTarget(input);
     const effectiveHeadless = this.resolveEffectiveHeadlessMode();
+    if (this.shouldAttemptInteractiveLoginFirst(effectiveHeadless)) {
+      await this.ensureInteractiveLoginReady(playwright, launchTarget, input);
+    }
     try {
       await this.runDeleteAttempt(
         playwright,
@@ -213,20 +231,7 @@ export class WikiBrowserDeletionService {
       Logger.info(
         `Headless wiki deletion requires login for ${targetLabel}. Preparing a lightweight browser profile for one-time manual login.`,
       );
-      await this.closeReusableSession();
-      const recoveryProfile = await this.prepareLoginRecoveryProfile(launchTarget);
-      try {
-        await this.performInteractiveLogin(
-          playwright,
-          launchTarget,
-          input,
-          recoveryProfile.userDataDir,
-        );
-        await recoveryProfile.persist();
-      } catch (error) {
-        await recoveryProfile.cleanup().catch(() => undefined);
-        throw error;
-      }
+      await this.recoverLoginInteractively(playwright, launchTarget, input);
 
       try {
         await this.runDeleteAttempt(playwright, launchTarget, input, true);
@@ -259,6 +264,31 @@ export class WikiBrowserDeletionService {
       return true;
     }
     return Boolean(process.env.DISPLAY || process.env.WAYLAND_DISPLAY);
+  }
+
+  private shouldAttemptInteractiveLoginFirst(headless: boolean): boolean {
+    return (
+      headless &&
+      this.config.playwrightLoginRecoveryMode === "interactive_first" &&
+      this.canRunHeadedBrowser()
+    );
+  }
+
+  private async ensureInteractiveLoginReady(
+    playwright: PlaywrightModule,
+    launchTarget: BrowserLaunchTarget,
+    input: DeleteWikiNodeInput,
+  ): Promise<void> {
+    const targetLabel = this.describeDeleteTarget(input);
+    const session = await this.getOrCreateSession(playwright, launchTarget, true);
+    if (await this.hasActiveWebSession(session)) {
+      return;
+    }
+
+    Logger.info(
+      `No active Feishu web session for ${targetLabel}. Opening a visible browser for manual login before deletion.`,
+    );
+    await this.recoverLoginInteractively(playwright, launchTarget, input);
   }
 
   private async ensureLoggedIn(
@@ -319,10 +349,17 @@ export class WikiBrowserDeletionService {
         );
       }
 
-      const wikiUrl = this.buildWikiUrl(input.nodeToken);
+      const fallbackContext = input.nodeToken?.trim()
+        ? { nodeToken: input.nodeToken.trim(), title: input.title }
+        : await this.resolveDeleteContext(session.page, input);
+      const wikiUrl = this.buildWikiUrl(fallbackContext.nodeToken);
       await this.navigateToWikiPage(session.page, wikiUrl);
       await this.ensureLoggedIn(session.page, wikiUrl, targetLabel, headless);
-      await this.deleteFromWikiPage(session.page, wikiUrl, input.title);
+      await this.deleteFromWikiPage(
+        session.page,
+        wikiUrl,
+        input.title ?? fallbackContext.title,
+      );
     } catch (error) {
       await this.resetReusableSessionIfMatches(session);
       throw error;
@@ -385,6 +422,27 @@ export class WikiBrowserDeletionService {
         await rm(recoveryDir, { recursive: true, force: true });
       },
     };
+  }
+
+  private async recoverLoginInteractively(
+    playwright: PlaywrightModule,
+    launchTarget: BrowserLaunchTarget,
+    input: DeleteWikiNodeInput,
+  ): Promise<void> {
+    await this.closeReusableSession();
+    const recoveryProfile = await this.prepareLoginRecoveryProfile(launchTarget);
+    try {
+      await this.performInteractiveLogin(
+        playwright,
+        launchTarget,
+        input,
+        recoveryProfile.userDataDir,
+      );
+      await recoveryProfile.persist();
+    } catch (error) {
+      await recoveryProfile.cleanup().catch(() => undefined);
+      throw error;
+    }
   }
 
   private async performInteractiveLogin(
@@ -511,9 +569,7 @@ export class WikiBrowserDeletionService {
     process.once("beforeExit", close);
     process.once("exit", close);
     for (const signal of ["SIGINT", "SIGTERM"] as const) {
-      process.once(signal, () => {
-        void this.closeReusableSession().finally(() => process.exit(0));
-      });
+      process.once(signal, close);
     }
   }
 
@@ -635,9 +691,15 @@ export class WikiBrowserDeletionService {
     input: DeleteWikiNodeInput,
   ): Promise<WikiDeleteContext> {
     const explicitSpaceId = input.spaceId?.trim();
-    if (explicitSpaceId) {
+    const explicitNodeToken = input.nodeToken?.trim();
+    const explicitDocumentId = input.documentId?.trim();
+    if (!explicitNodeToken && !explicitDocumentId) {
+      throw new Error("nodeToken or documentId is required for wiki deletion.");
+    }
+
+    if (explicitSpaceId && explicitNodeToken) {
       return {
-        nodeToken: input.nodeToken,
+        nodeToken: explicitNodeToken,
         spaceId: explicitSpaceId,
         title: input.title,
       };
@@ -646,31 +708,42 @@ export class WikiBrowserDeletionService {
     const currentContext = await this.readCurrentWikiContext(page);
     if (
       currentContext?.spaceId &&
-      currentContext.nodeToken === input.nodeToken
+      ((explicitNodeToken && currentContext.nodeToken === explicitNodeToken) ||
+        (explicitDocumentId &&
+          currentContext.documentId === explicitDocumentId &&
+          currentContext.nodeToken))
     ) {
       return {
-        nodeToken: input.nodeToken,
+        nodeToken: currentContext.nodeToken!,
         spaceId: currentContext.spaceId,
         title: input.title ?? currentContext.title,
       };
     }
 
-    const wikiUrl = this.buildWikiUrl(input.nodeToken);
-    await this.navigateToWikiPage(page, wikiUrl);
-    const resolvedContext = await this.readCurrentWikiContext(page);
-    if (
-      resolvedContext?.spaceId &&
-      resolvedContext.nodeToken === input.nodeToken
-    ) {
-      return {
-        nodeToken: input.nodeToken,
-        spaceId: resolvedContext.spaceId,
-        title: input.title ?? resolvedContext.title,
-      };
+    const candidateUrls = explicitNodeToken
+      ? [this.buildWikiUrl(explicitNodeToken)]
+      : [
+          this.buildDocumentUrl(explicitDocumentId!),
+          this.buildWikiUrl(explicitDocumentId!),
+        ];
+    for (const targetUrl of candidateUrls) {
+      await this.navigateToWikiPage(page, targetUrl);
+      const resolvedContext = await this.readCurrentWikiContext(page);
+      if (
+        resolvedContext?.spaceId &&
+        resolvedContext.nodeToken &&
+        (!explicitNodeToken || resolvedContext.nodeToken === explicitNodeToken)
+      ) {
+        return {
+          nodeToken: resolvedContext.nodeToken,
+          spaceId: resolvedContext.spaceId,
+          title: input.title ?? resolvedContext.title,
+        };
+      }
     }
 
     throw new Error(
-      `Cannot resolve wiki space_id for ${this.describeDeleteTarget(input)}.`,
+      `Cannot resolve wiki node/space_id for ${this.describeDeleteTarget(input)}.`,
     );
   }
 
@@ -681,6 +754,7 @@ export class WikiBrowserDeletionService {
           current_space_wiki?: {
             space_id?: string;
             wiki_token?: string;
+            obj_token?: string;
             title?: string;
           };
         }
@@ -691,6 +765,7 @@ export class WikiBrowserDeletionService {
       return {
         spaceId: current.space_id,
         nodeToken: current.wiki_token,
+        documentId: current.obj_token,
         title: current.title,
       };
     });
@@ -842,7 +917,18 @@ export class WikiBrowserDeletionService {
   }
 
   private describeDeleteTarget(input: DeleteWikiNodeInput): string {
-    return input.title ?? this.buildWikiUrl(input.nodeToken);
+    if (input.title) {
+      return input.title;
+    }
+    const nodeToken = input.nodeToken?.trim();
+    if (nodeToken) {
+      return this.buildWikiUrl(nodeToken);
+    }
+    const documentId = input.documentId?.trim();
+    if (documentId) {
+      return this.buildDocumentUrl(documentId);
+    }
+    return "unknown target";
   }
 
   private formatResponsePreview(text: string): string {

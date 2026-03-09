@@ -9,6 +9,8 @@ function maskToken(token: string): string {
   return `${token.slice(0, 6)}...${token.slice(-4)}`;
 }
 
+const DEFAULT_ENV_FILE = ".env";
+
 export function registerAuthTools(server: McpServer, context: AppContext): void {
   server.tool(
     "ping",
@@ -65,13 +67,15 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
     async ({ redirectUri, state }) => {
       try {
         const defaultRedirectUri = `http://localhost:${context.config.server.port}/callback`;
+        const effectiveState = context.authManager.issueUserAuthorizeState(state);
         const authorizeUrl = context.authManager.buildUserAuthorizeUrl(
           redirectUri ?? defaultRedirectUri,
-          state,
+          effectiveState,
         );
         return jsonToolResult({
           authorizeUrl,
           redirectUri: redirectUri ?? defaultRedirectUri,
+          state: effectiveState,
           nextStep:
             "Open authorizeUrl, approve login, then call exchange_user_auth_code with the `code` parameter.",
         });
@@ -100,13 +104,8 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
         .optional()
         .default(true)
         .describe("Write FEISHU_AUTH_TYPE/FEISHU_USER_* into env file."),
-      envFile: z
-        .string()
-        .optional()
-        .default(".env")
-        .describe("Target env file path when writeToEnv=true."),
     },
-    async ({ code, redirectUri, switchToUser, writeToEnv, envFile }) => {
+    async ({ code, redirectUri, switchToUser, writeToEnv }) => {
       try {
         const tokenResult = await context.authManager.exchangeUserAuthorizationCode(
           code,
@@ -118,9 +117,11 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
         let persistedEnvPath: string | undefined;
         if (writeToEnv) {
           persistedEnvPath = await persistUserEnv({
-            envFile,
+            envFile: DEFAULT_ENV_FILE,
             accessToken: tokenResult.accessToken,
+            accessTokenExpiresAt: tokenResult.expiresAtUnixSec,
             refreshToken: tokenResult.refreshToken,
+            refreshTokenExpiresAt: tokenResult.refreshTokenExpiresAtUnixSec,
           });
         }
         return jsonToolResult({
@@ -131,6 +132,7 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
             ? maskToken(tokenResult.refreshToken)
             : undefined,
           expiresAtUnixSec: tokenResult.expiresAtUnixSec,
+          refreshTokenExpiresAtUnixSec: tokenResult.refreshTokenExpiresAtUnixSec,
           writeToEnv,
           envFile: persistedEnvPath,
         });
@@ -149,7 +151,6 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
       expiresInSec: z.number().int().positive().optional().default(7200),
       switchToUser: z.boolean().optional().default(true),
       writeToEnv: z.boolean().optional().default(true),
-      envFile: z.string().optional().default(".env"),
     },
     async ({
       accessToken,
@@ -157,7 +158,6 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
       expiresInSec,
       switchToUser,
       writeToEnv,
-      envFile,
     }) => {
       try {
         const tokenResult = context.authManager.setUserTokens(
@@ -171,9 +171,11 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
         let persistedEnvPath: string | undefined;
         if (writeToEnv) {
           persistedEnvPath = await persistUserEnv({
-            envFile,
+            envFile: DEFAULT_ENV_FILE,
             accessToken: tokenResult.accessToken,
+            accessTokenExpiresAt: tokenResult.expiresAtUnixSec,
             refreshToken: tokenResult.refreshToken,
+            refreshTokenExpiresAt: tokenResult.refreshTokenExpiresAtUnixSec,
           });
         }
         return jsonToolResult({
@@ -184,6 +186,7 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
             ? maskToken(tokenResult.refreshToken)
             : undefined,
           expiresAtUnixSec: tokenResult.expiresAtUnixSec,
+          refreshTokenExpiresAtUnixSec: tokenResult.refreshTokenExpiresAtUnixSec,
           writeToEnv,
           envFile: persistedEnvPath,
         });

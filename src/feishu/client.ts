@@ -4,6 +4,10 @@ import { Logger } from "../logger.js";
 
 type RequestMethod = "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
 
+interface RequestOptions {
+  authTypeOverride?: "tenant" | "user";
+}
+
 class Semaphore {
   private active = 0;
   private readonly queue: Array<() => void> = [];
@@ -68,9 +72,10 @@ export class FeishuClient {
     method: RequestMethod = "GET",
     body?: unknown,
     query?: Record<string, string | number | boolean | undefined>,
+    options?: RequestOptions,
   ): Promise<T> {
     return this.semaphore.withLock(() =>
-      this.requestWithRetry<T>(path, method, body, query),
+      this.requestWithRetry<T>(path, method, body, query, options),
     );
   }
 
@@ -95,6 +100,7 @@ export class FeishuClient {
     method: RequestMethod,
     body?: unknown,
     query?: Record<string, string | number | boolean | undefined>,
+    options?: RequestOptions,
   ): Promise<T> {
     const maxAttempts = this.config.requestMaxRetries + 1;
     let lastError: unknown;
@@ -102,7 +108,7 @@ export class FeishuClient {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       try {
-        return await this.requestOnce<T>(path, method, body, query);
+        return await this.requestOnce<T>(path, method, body, query, options);
       } catch (error) {
         let currentError: unknown = error;
 
@@ -110,10 +116,11 @@ export class FeishuClient {
           authRecoveryAttempted = true;
           this.authManager.invalidateCachedAccessToken(
             `auth expired response for ${path}`,
+            options?.authTypeOverride,
           );
           Logger.warn(`Feishu auth token expired, refreshing and retrying once: ${path}`);
           try {
-            return await this.requestOnce<T>(path, method, body, query);
+            return await this.requestOnce<T>(path, method, body, query, options);
           } catch (retryError) {
             currentError = retryError;
           }
@@ -142,8 +149,11 @@ export class FeishuClient {
     method: RequestMethod,
     body?: unknown,
     query?: Record<string, string | number | boolean | undefined>,
+    options?: RequestOptions,
   ): Promise<T> {
-    const accessToken = await this.authManager.getAccessToken();
+    const accessToken = await this.authManager.getAccessToken(
+      options?.authTypeOverride,
+    );
     const url = this.buildUrl(path, query);
     const response = await fetch(url, {
       method,

@@ -1,107 +1,114 @@
 # feishu-creator
 
-A clean TypeScript MCP server foundation for rebuilding Feishu automation step by step.
+TypeScript MCP server for Feishu document/wiki automation.
 
 [中文说明](./README.zh-CN.md)
 
-## Current Step
+## Quick Start
 
-Step 1: runnable MCP baseline.
+| Step | Action | Command / Value |
+| --- | --- | --- |
+| 1 | Install dependencies | `npm install` |
+| 2 | Prepare env file | `cp .env.example .env` |
+| 3 | Start in default mode (`stdio`) | `npm run dev` |
+| 4 | Start in HTTP mode | `npm run dev:http` |
 
-- Streamable HTTP endpoint: `/mcp`
-- Health check endpoint: `/health`
-- Built-in tools: `ping`, `auth_status`, `get_user_authorize_url`, `exchange_user_auth_code`, `set_user_tokens`, `set_auth_mode`, `create_feishu_document`, `get_feishu_document_info`, `get_feishu_document_blocks`, `delete_feishu_document`, `batch_delete_feishu_documents`, `update_feishu_block_text`, `batch_update_feishu_blocks`, `delete_feishu_document_blocks`, `batch_create_feishu_blocks`, `insert_before_heading`, `locate_section_range`, `replace_section_blocks`, `delete_by_heading`, `replace_section_with_ordered_list`, `generate_section_blocks`, `generate_rich_text_blocks`, `list_feishu_wiki_spaces`, `get_feishu_wiki_tree`, `search_feishu_documents`
-- Runtime mode: `http` (default) or `stdio`
-- Feishu auth config: `tenant` / `user`
+`npm run dev` and `npm run start` default to `stdio` unless `MCP_MODE` or CLI args override it.
 
-## Run
+## Required Env
 
-```bash
-npm install
-npm run dev:http
-```
+| Variable | Required When | Default | Description |
+| --- | --- | --- | --- |
+| `FEISHU_APP_ID` | Always | - | Feishu app id |
+| `FEISHU_APP_SECRET` | Always | - | Feishu app secret |
+| `FEISHU_AUTH_TYPE` | Always | - | `tenant` or `user` |
+| `MCP_HTTP_BIND_HOST` | HTTP mode | `127.0.0.1` | MCP HTTP bind host |
+| `MCP_HTTP_REQUIRE_AUTH` | HTTP mode | `true` | Require auth header for `/mcp` |
+| `MCP_HTTP_AUTH_TOKEN` | HTTP mode + `MCP_HTTP_REQUIRE_AUTH=true` | - | Bearer token for `/mcp` |
 
-or:
+## Common Optional Env
 
-```bash
-npm run dev:stdio
-```
+| Variable | Default | Description |
+| --- | --- | --- |
+| `FEISHU_USER_ACCESS_TOKEN` | - | User access token for `user` auth mode |
+| `FEISHU_USER_REFRESH_TOKEN` | - | User refresh token for `user` auth mode |
+| `FEISHU_USER_ACCESS_TOKEN_EXPIRES_AT` | - | Access token expiry timestamp |
+| `FEISHU_USER_REFRESH_TOKEN_EXPIRES_AT` | - | Refresh token expiry timestamp |
+| `FEISHU_WIKI_DELETE_STRATEGY` | `playwright` | Current supported value is `playwright` |
+| `FEISHU_UI_BASE_URL` | Feishu default | Feishu web base URL |
+| `FEISHU_PLAYWRIGHT_HEADLESS` | `true` | Run browser in headless mode |
+| `FEISHU_PLAYWRIGHT_EXECUTABLE_PATH` | - | Pin browser executable |
+| `FEISHU_PLAYWRIGHT_USER_DATA_DIR` | project config value | Browser profile dir |
+| `FEISHU_PLAYWRIGHT_ACTION_TIMEOUT_MS` | `45000` | Action timeout |
+| `FEISHU_PLAYWRIGHT_LOGIN_RECOVERY_MODE` | `on_demand` | `on_demand` or `interactive_first` |
+| `FEISHU_PLAYWRIGHT_LOGIN_TIMEOUT_MS` | project config value | Interactive login timeout |
 
-## User OAuth Auto Callback
+## Smoke Check
 
-In HTTP mode, OAuth callback endpoint is available:
+| Check | Tool | Example Input |
+| --- | --- | --- |
+| Service reachable | `ping` | `{ "message": "hello" }` |
+| Auth status | `auth_status` | `{}` |
+| Token fetch path | `auth_status` | `{ "fetchToken": true }` |
+| Real doc read | `get_feishu_document_info` | `{ "documentId": "<docx_id_or_url>" }` |
 
-- `http://localhost:<PORT>/callback`
+## Tool Catalog
 
-Typical flow:
+### Auth & Runtime
 
-1. Call `get_user_authorize_url` with redirect URI set to `http://localhost:<PORT>/callback`.
-2. Open returned `authorizeUrl` in browser and approve.
-3. Browser redirects to `/callback`, server auto exchanges code, switches runtime auth mode to `user`, and writes tokens to `.env`.
+| Tool | Purpose |
+| --- | --- |
+| `ping` | Connectivity check |
+| `auth_status` | Inspect auth mode and token cache |
+| `get_user_authorize_url` | Build OAuth authorize URL |
+| `exchange_user_auth_code` | Exchange OAuth code for user token |
+| `set_user_tokens` | Set user access/refresh token at runtime |
+| `set_auth_mode` | Switch runtime auth mode |
 
-If `.env` already contains `FEISHU_AUTH_TYPE=user` and `FEISHU_USER_REFRESH_TOKEN`, the service refreshes the user token on startup and writes the latest token pair back to `.env`.
+### Document Core
 
-## Feishu Auth Env
+| Tool | Purpose |
+| --- | --- |
+| `create_feishu_document` | Create document in drive/wiki |
+| `get_feishu_document_info` | Read basic document metadata |
+| `get_feishu_document_blocks` | Read document blocks |
+| `delete_feishu_document` | Delete one doc/wiki node |
+| `batch_delete_feishu_documents` | Delete multiple docs/wiki nodes |
 
-Required in both auth types:
+### Document Edit
 
-- `FEISHU_APP_ID`
-- `FEISHU_APP_SECRET`
-- `FEISHU_AUTH_TYPE=tenant|user`
+| Tool | Purpose |
+| --- | --- |
+| `update_feishu_block_text` | Update one existing text-capable block |
+| `batch_update_feishu_blocks` | Update multiple text-capable blocks |
+| `delete_feishu_document_blocks` | Delete child blocks by index range |
+| `batch_create_feishu_blocks` | Create child blocks in batch |
+| `locate_section_range` | Locate section start/end by heading |
+| `insert_before_heading` | Insert blocks before heading |
+| `replace_section_blocks` | Replace section content |
+| `delete_by_heading` | Delete section by heading |
+| `replace_section_with_ordered_list` | Replace section with ordered list |
+| `generate_section_blocks` | Generate heading/paragraph/list section |
+| `generate_rich_text_blocks` | Generate rich text block set |
 
-Optional for user mode:
+### Wiki & Search
 
-- `FEISHU_USER_ACCESS_TOKEN`
-- `FEISHU_USER_REFRESH_TOKEN`
-- `FEISHU_WIKI_DELETE_STRATEGY=clear_content|playwright`
-- `FEISHU_UI_BASE_URL`
-- `FEISHU_PLAYWRIGHT_HEADLESS`
-- `FEISHU_PLAYWRIGHT_EXECUTABLE_PATH`
-- `FEISHU_PLAYWRIGHT_USER_DATA_DIR`
-- `FEISHU_PLAYWRIGHT_ACTION_TIMEOUT_MS`
-- `FEISHU_PLAYWRIGHT_LOGIN_TIMEOUT_MS`
+| Tool | Purpose |
+| --- | --- |
+| `list_feishu_wiki_spaces` | List visible wiki spaces |
+| `get_feishu_wiki_tree` | Read wiki node tree |
+| `search_feishu_documents` | Search docs/wiki nodes by keyword |
 
-Where:
+## Text Update Payload
 
-- `clear_content`: current default. Wiki-backed deletions fall back to clearing content.
-- `playwright`: runs built-in Playwright automation inside this server process to delete the wiki node.
+For `update_feishu_block_text` and `batch_update_feishu_blocks`:
 
-Playwright deletion notes:
+| Format | Status | Example |
+| --- | --- | --- |
+| Object array | Preferred | `[{ "text": "Hello world" }]` |
+| String array | Backward compatible (auto-normalized) | `["Hello world"]` |
 
-- The service first reuses the signed-in Feishu web session and calls the internal web deletion API `/space/api/wiki/v2/tree/del_single_node/`. It falls back to menu-click UI automation only when that direct API path fails.
-- The service first tries the system default browser. If that browser is not directly automatable, it falls back to common installed Chrome / Edge / Chromium / Firefox executables.
-- `FEISHU_PLAYWRIGHT_EXECUTABLE_PATH` has the highest priority when you want to force a specific browser binary.
-- Keep `FEISHU_PLAYWRIGHT_HEADLESS=true` as the default.
-- `FEISHU_PLAYWRIGHT_ACTION_TIMEOUT_MS` defaults to `45000`; increase it if your network/UI loading is slow.
-- If the headless delete flow detects an expired Feishu web session, the service first prepares a lightweight automation profile, then opens a visible browser for one-time manual login recovery, saves the refreshed session into `FEISHU_PLAYWRIGHT_USER_DATA_DIR`, closes the window, and retries deletion in headless mode.
-- Browser session state is stored under `FEISHU_PLAYWRIGHT_USER_DATA_DIR`, so later runs keep reusing the same session.
-- Repeated wiki deletions in the same server process reuse the same Playwright browser context. `batch_delete_feishu_documents` also reuses that shared session instead of relaunching the browser for each document.
-- The service prefers bootstrapping a lightweight automation profile from the local system browser profile when one is available; otherwise it creates an empty lightweight profile and waits for you to sign in once.
-- If you want to prepare the automation profile ahead of time, you can still bootstrap one from an already signed-in Chrome profile with:
+## Advanced Docs
 
-```bash
-npm run profile:bootstrap -- --source .playwright/system-chrome-clone-20260306-143253 --target .playwright/feishu-automation-profile
-```
-
-- After bootstrapping, point `FEISHU_PLAYWRIGHT_USER_DATA_DIR` to `.playwright/feishu-automation-profile`.
-- If the runtime has no GUI, prepare that browser profile in advance. Otherwise wiki hard deletion will fail because there is no signed-in web session to reuse.
-- If the system default browser is Safari or another unsupported target, the service keeps falling back to installed Chromium / Firefox browsers before trying the Playwright bundled browser.
-
-Performance related:
-
-- `FEISHU_MAX_CONCURRENCY`
-- `FEISHU_REQUEST_MAX_RETRIES`
-- `FEISHU_REQUEST_BACKOFF_BASE_MS`
-- `FEISHU_DOC_INFO_CACHE_TTL_SECONDS`
-- `FEISHU_DOC_BLOCKS_CACHE_TTL_SECONDS`
-- `FEISHU_WIKI_SPACES_CACHE_TTL_SECONDS`
-- `FEISHU_WIKI_TREE_CACHE_TTL_SECONDS`
-- `FEISHU_WIKI_TREE_MAX_CONCURRENCY`
-- `FEISHU_CACHE_MAX_ENTRIES`
-- `FEISHU_CACHE_CLEANUP_INTERVAL_SECONDS`
-
-## Next Suggested Step
-
-Add more technical-document editing tools:
-
-- tables, images, attachments, and diagram rendering
+- [Advanced usage (English)](./docs/advanced.md)
+- [高级说明（中文）](./docs/advanced.zh-CN.md)

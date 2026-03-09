@@ -226,6 +226,11 @@ export class WikiTreeService {
       }
 
       hasMore = Boolean(data.has_more);
+      if (hasMore && !data.page_token) {
+        throw new Error(
+          "Feishu wiki tree pagination returned has_more=true without page_token.",
+        );
+      }
       pageToken = data.page_token;
     }
 

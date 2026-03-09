@@ -129,6 +129,11 @@ export class DocumentBlockService {
           }
 
           hasMore = Boolean(data.has_more);
+          if (hasMore && !data.page_token) {
+            throw new Error(
+              "Feishu children pagination returned has_more=true without page_token.",
+            );
+          }
           pageToken = data.page_token;
         }
 
@@ -214,6 +219,11 @@ export class DocumentBlockService {
       }
 
       hasMore = Boolean(data.has_more);
+      if (hasMore && !data.page_token) {
+        throw new Error(
+          "Feishu blocks pagination returned has_more=true without page_token.",
+        );
+      }
       pageToken = data.page_token;
     }
 

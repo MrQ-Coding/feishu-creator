@@ -24,14 +24,23 @@ const textElementSchema = z.union([
   }),
 ]);
 
+const textElementInputSchema = z.union([
+  textElementSchema,
+  z
+    .string()
+    .min(1)
+    .transform((text) => ({ text })),
+]);
+
+const textElementsDescription =
+  'Array of text/equation elements with optional style. Preferred: [{"text":"Hello"}]. Legacy shorthand string entries like ["Hello"] are also accepted and normalized to objects.';
+
 const blockTextUpdateSchema = z.object({
   blockId: z.string().min(1).describe("Target block ID."),
   textElements: z
-    .array(textElementSchema)
+    .array(textElementInputSchema)
     .min(1)
-    .describe(
-      "Array of text/equation elements with optional style. Sent as update_text_elements.",
-    ),
+    .describe(textElementsDescription),
 });
 
 export function registerBlockTools(server: McpServer, context: AppContext): void {
@@ -46,11 +55,9 @@ export function registerBlockTools(server: McpServer, context: AppContext): void
         ),
       blockId: z.string().min(1).describe("Target block ID."),
       textElements: z
-        .array(textElementSchema)
+        .array(textElementInputSchema)
         .min(1)
-        .describe(
-          "Array of text/equation elements with optional style. Sent as update_text_elements.",
-        ),
+        .describe(textElementsDescription),
       documentRevisionId: z
         .number()
         .int()
