@@ -11,6 +11,35 @@ export interface UpdateBlockTextResponse {
   document_revision_id?: number;
 }
 
+export interface UploadLocalImageInput {
+  documentId: string;
+  imagePath: string;
+  parentBlockId?: string;
+  replaceBlockId?: string;
+  index?: number;
+  fileName?: string;
+  width?: number;
+  height?: number;
+  documentRevisionId?: number;
+}
+
+export interface UploadLocalImageResult {
+  documentId: string;
+  mode: 'insert' | 'replace';
+  imageBlockId: string;
+  parentBlockId?: string;
+  replaceBlockId?: string;
+  index?: number;
+  imagePath: string;
+  fileName: string;
+  mimeType: string;
+  fileToken: string;
+  size: number;
+  width: number;
+  height: number;
+  documentRevisionId?: number;
+}
+
 export interface TextElementStyle {
   bold?: boolean;
   italic?: boolean;

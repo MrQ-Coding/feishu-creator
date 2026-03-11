@@ -123,4 +123,90 @@ export function registerBlockTools(server: McpServer, context: AppContext): void
       }
     },
   );
+
+  server.tool(
+    "upload_local_image_to_feishu",
+    "Upload one local image file into a Feishu docx document. Use replaceBlockId to replace an existing image block, or parentBlockId to insert a new image block under a parent. This tool uploads the given file as-is and does not verify whether the screenshot content is the intended target.",
+    {
+      documentId: z
+        .string()
+        .describe(
+          "Document ID or URL. Examples: https://xxx.feishu.cn/docx/xxx or raw document id.",
+        ),
+      imagePath: z
+        .string()
+        .min(1)
+        .describe(
+          "Absolute or relative local image path. PNG/JPEG/GIF/BMP supported. Verify the local image content before upload when using screenshots.",
+        ),
+      replaceBlockId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Existing image block ID to replace in place."),
+      parentBlockId: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Parent block ID used when inserting a new image block."),
+      index: z
+        .number()
+        .int()
+        .min(0)
+        .optional()
+        .describe("Insert position under parentBlockId. Omit to append."),
+      fileName: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("Optional upload file name. Defaults to basename(imagePath)."),
+      width: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Optional image width override. Auto-detected for PNG/JPEG/GIF/BMP."),
+      height: z
+        .number()
+        .int()
+        .positive()
+        .optional()
+        .describe("Optional image height override. Auto-detected for PNG/JPEG/GIF/BMP."),
+      documentRevisionId: z
+        .number()
+        .int()
+        .min(-1)
+        .optional()
+        .default(-1)
+        .describe("Target document revision id. -1 means latest."),
+    },
+    async ({
+      documentId,
+      imagePath,
+      replaceBlockId,
+      parentBlockId,
+      index,
+      fileName,
+      width,
+      height,
+      documentRevisionId,
+    }) => {
+      try {
+        const result = await context.documentEditService.uploadLocalImage({
+          documentId,
+          imagePath,
+          replaceBlockId,
+          parentBlockId,
+          index,
+          fileName,
+          width,
+          height,
+          documentRevisionId,
+        });
+        return jsonToolResult(result);
+      } catch (error) {
+        return errorToolResult("upload_local_image_to_feishu", error);
+      }
+    },
+  );
 }

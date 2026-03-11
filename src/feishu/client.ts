@@ -155,13 +155,22 @@ export class FeishuClient {
       options?.authTypeOverride,
     );
     const url = this.buildUrl(path, query);
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+    };
+    let requestBody: BodyInit | undefined;
+    if (body instanceof FormData) {
+      requestBody = body;
+    } else if (body === undefined) {
+      requestBody = undefined;
+    } else {
+      headers["Content-Type"] = "application/json";
+      requestBody = JSON.stringify(body);
+    }
     const response = await fetch(url, {
       method,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      headers,
+      body: requestBody,
     });
 
     const text = await response.text();

@@ -15,6 +15,7 @@ import {
   generateSectionBlocksCore,
   updateBlockTextCore,
 } from './documentEdit/blockMutations.js';
+import { uploadLocalImageCore } from './documentEdit/imageUploads.js';
 import {
   deleteByHeadingCore,
   insertBeforeHeadingCore,
@@ -59,6 +60,8 @@ export type {
   TextElementStyle,
   UpdateBlockTextInput,
   UpdateBlockTextResult,
+  UploadLocalImageInput,
+  UploadLocalImageResult,
 } from './documentEdit/types.js';
 import type {
   BatchCreateBlocksInput,
@@ -87,6 +90,8 @@ import type {
   ReplaceSectionWithOrderedListResult,
   UpdateBlockTextInput,
   UpdateBlockTextResult,
+  UploadLocalImageInput,
+  UploadLocalImageResult,
 } from './documentEdit/types.js';
 
 export class DocumentEditService {
@@ -290,6 +295,15 @@ export class DocumentEditService {
     const normalizedDocumentId = this.requireDocumentId(input.documentId);
     return this.withDocumentLock(normalizedDocumentId, () =>
       deleteDocumentBlocksCore(this.runtime, normalizedDocumentId, input),
+    );
+  }
+
+  async uploadLocalImage(
+    input: UploadLocalImageInput,
+  ): Promise<UploadLocalImageResult> {
+    const normalizedDocumentId = this.requireDocumentId(input.documentId);
+    return this.withDocumentLock(normalizedDocumentId, () =>
+      uploadLocalImageCore(this.runtime, normalizedDocumentId, input),
     );
   }
 
