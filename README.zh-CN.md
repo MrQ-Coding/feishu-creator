@@ -10,13 +10,23 @@
 2. 推荐保留 `MCP_MODE=auto`：平时默认还是走 `stdio`，只有你明确传了 `--http` 时才切到 `HTTP`。这样普通使用不用反复改 `.env`。
 3. 对新手来说，第一次“真正跑通”的标准不是服务启动了，而是能连续完成 `ping`、`auth_status`、`get_feishu_document_info` 这 3 步。
 
-## 二、最短上手路径（主 README 只保留这部分）
+## 二、最短上手路径
 
-### 1. 准备条件
+### 0. 准备条件
 
 - Node.js `>= 20.17.0`
 - 一组飞书应用 `app id` / `app secret`
 - 一个你有权限访问的飞书文档 URL 或 `docx_id`
+
+### 1. 创建飞书应用
+
+   在使用工具之前，需要创建一个飞书应用：
+   - 访问 飞书开放平台 并登录
+   - 点击“控制台”并创建一个新应用程序
+   - 获取应用程序ID和应用程序密钥，它们将用于API身份验证
+   - 根据您的使用场景，为您的应用程序添加必要的权限（反正我是把所有的免审权限都开了）
+   - 安全设置》重定向URL添加：http://localhost:3333/callback（终端登录飞书会报错：https://open.feishu.cn/document/faq/trouble-shooting/how-to-resolve-the-authorization-page-20029-error）
+
 
 ### 2. 详细安装与初始化交给飞书文档工作流助手
 

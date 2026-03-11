@@ -10,7 +10,7 @@ TypeScript MCP server for Feishu document/wiki automation.
 2. Keep `MCP_MODE=auto` by default: normal usage still runs through `stdio`, and you only switch to `HTTP` when you explicitly pass `--http`. That keeps day-to-day usage simple and avoids editing `.env` back and forth.
 3. For a beginner, "it works" means you can complete `ping`, `auth_status`, and `get_feishu_document_info` in order, not just start the process.
 
-## 2. Shortest Successful Path (the top-level README only keeps this)
+## 2. Shortest Successful Path
 
 ### 2.1 Prerequisites
 
@@ -18,7 +18,17 @@ TypeScript MCP server for Feishu document/wiki automation.
 - A Feishu app `app id` / `app secret`
 - A real Feishu document URL or `docx_id` you can access
 
-### 2.2 Hand Off Detailed Setup And Initialization To The Feishu Doc Workflow
+### 2.2 Create A Feishu App
+
+Before using the tool, create a Feishu app:
+
+- Sign in to the [Feishu Open Platform](https://open.feishu.cn/app?lang=en-US).
+- Open the console and create a new app.
+- Copy the App ID and App Secret. You will use them for API authentication.
+- Add the permissions your use case needs. In practice, enabling the non-review scopes up front usually avoids a second setup pass.
+- Under Security Settings, add the redirect URL `http://localhost:3333/callback`. This avoids the OAuth terminal login issue described in the official FAQ: [How to resolve the authorization page 20029 error](https://open.feishu.cn/document/faq/trouble-shooting/how-to-resolve-the-authorization-page-20029-error).
+
+### 2.3 Hand Off Detailed Setup And Initialization To The Feishu Doc Workflow
 
 The top-level README only keeps the shortest path. If you explicitly ask Codex to install, initialize, configure, or wire up `feishu-creator`, the upgraded `feishu-creator-doc-workflow` skill now tries to do the long setup work automatically:
 
@@ -30,14 +40,14 @@ The top-level README only keeps the shortest path. If you explicitly ask Codex t
 
 In other words, the long-form setup flow now lives in the skill itself instead of a repo-side playbook.
 
-### 2.3 Install
+### 2.4 Install
 
 ```bash
 npm install
 cp .env.example .env
 ```
 
-### 2.4 Fill The Smallest Possible `.env`
+### 2.5 Fill The Smallest Possible `.env`
 
 If you only want the quickest first run, start with `tenant` mode:
 
@@ -49,7 +59,7 @@ FEISHU_AUTH_TYPE=tenant
 
 Everything else can stay at the `.env.example` defaults for now. In practice, keep `MCP_MODE=auto` and avoid changing it to `http` for normal usage.
 
-### 2.5 Keep `MCP_MODE=auto`
+### 2.6 Keep `MCP_MODE=auto`
 
 This is the lowest-friction setup:
 
@@ -59,7 +69,7 @@ This is the lowest-friction setup:
 
 In this project, `auto` is effectively "let the startup command decide the mode", not "stay in HTTP by default".
 
-### 2.6 Connect It In Your MCP Client (minimal example)
+### 2.7 Connect It In Your MCP Client (minimal example)
 
 #### `stdio`: recommended for first-time MCP users
 
@@ -89,7 +99,7 @@ Notes:
 - Manually running `npm run dev` in a terminal is useful for debugging the server itself, but it does not mean your client is already connected to it.
 - Only switch to `HTTP` temporarily when you need OAuth callback for `user` token acquisition. Do not change your default mode to `http` just for that. See [Advanced usage (English)](./docs/advanced.md) for that path.
 
-### 2.7 First Calls To Make
+### 2.8 First Calls To Make
 
 This order makes debugging much easier:
 
