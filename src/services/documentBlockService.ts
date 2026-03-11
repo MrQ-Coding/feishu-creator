@@ -238,7 +238,7 @@ export class DocumentBlockService {
       maxDepth?: number;
     },
   ): Promise<GetDocumentBlocksResult> {
-    const rootBlock = await this.getRootBlock(normalizedDocumentId);
+    const rootBlock = await this.fetchRootBlock(normalizedDocumentId);
     const blocks: Array<Record<string, unknown>> = [rootBlock];
     const maxBlocks = options.maxBlocks;
     const maxDepth = options.maxDepth;
@@ -302,7 +302,15 @@ export class DocumentBlockService {
     };
   }
 
-  private async getRootBlock(documentId: string): Promise<Record<string, unknown>> {
+  async getRootBlock(documentId: string): Promise<Record<string, unknown>> {
+    const normalizedDocumentId = extractDocumentId(documentId);
+    if (!normalizedDocumentId) {
+      throw new Error("Invalid document ID or document URL.");
+    }
+    return this.fetchRootBlock(normalizedDocumentId);
+  }
+
+  private async fetchRootBlock(documentId: string): Promise<Record<string, unknown>> {
     const cacheKey = this.buildRootBlockCacheKey(documentId);
     return this.rootBlockCache.getOrLoad(cacheKey, async () => {
       const data = await this.feishuClient.request<DocumentBlockListResponse>(

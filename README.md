@@ -67,13 +67,17 @@ TypeScript MCP server for Feishu document/wiki automation.
 
 ### Document Core
 
+This server is wiki-first. It does not expose standalone Drive browsing/search tools; retained Drive usage is limited to folder-based creation compatibility and internal APIs still required by document search fallback, image upload, and delete-flow landing checks.
+
 | Tool | Purpose |
 | --- | --- |
-| `create_feishu_document` | Create document in drive/wiki |
+| `create_feishu_document` | Create document in wiki, or under a Drive folder when `folderToken` is provided |
 | `get_feishu_document_info` | Read basic document metadata |
 | `get_feishu_document_blocks` | Read document blocks |
 | `delete_feishu_document` | Delete one doc/wiki node |
 | `batch_delete_feishu_documents` | Delete multiple docs/wiki nodes |
+| `import_markdown_to_feishu` | Import minimal Markdown into a document |
+| `export_feishu_document_to_markdown` | Export document content to minimal Markdown |
 
 ### Document Edit
 
@@ -84,6 +88,9 @@ TypeScript MCP server for Feishu document/wiki automation.
 | `delete_feishu_document_blocks` | Delete child blocks by index range |
 | `batch_create_feishu_blocks` | Create child blocks in batch |
 | `locate_section_range` | Locate section start/end by heading |
+| `copy_section` | Copy a section within/across documents |
+| `move_section` | Move a section within/across documents |
+| `preview_edit_plan` | Preview a semantic edit plan without mutating the document |
 | `insert_before_heading` | Insert blocks before heading |
 | `replace_section_blocks` | Replace section content |
 | `delete_by_heading` | Delete section by heading |
@@ -107,6 +114,32 @@ For `update_feishu_block_text` and `batch_update_feishu_blocks`:
 | --- | --- | --- |
 | Object array | Preferred | `[{ "text": "Hello world" }]` |
 | String array | Backward compatible (auto-normalized) | `["Hello world"]` |
+
+## Inline Code In Rich Text
+
+Text fields in `generate_section_blocks`, `generate_rich_text_blocks`, `replace_section_blocks`, `insert_before_heading`, and `replace_section_with_ordered_list` support lightweight inline-code parsing:
+
+- Wrap code spans in backticks, for example ``Run `npm run build` ``.
+- Only inline code spans are parsed; the input is not treated as a full Markdown document.
+- `code` blocks are still written verbatim, so backticks inside them are not reinterpreted as inline styles.
+
+## Markdown Import And Export
+
+The initial Markdown workflow is intentionally lightweight rather than fully lossless.
+
+- Import supports headings, paragraphs, ordered lists, bullet lists, quotes, fenced code blocks, and inline code spans.
+- Export supports the same block set and also renders common inline styles like bold, italic, strikethrough, inline code, and underline (`<u>...</u>`).
+- Nested lists, tables, attachments, and other advanced Feishu-only blocks are not preserved yet.
+
+## Operational Notes
+
+- `create_feishu_document` is wiki-first in normal usage. Pass `wikiContext.spaceId` for new wiki pages, or `folderToken` only when you intentionally need Drive-folder compatibility.
+- Do not use `search_feishu_documents` as the first verifier for a page you just created or deleted. Prefer `get_feishu_document_info` or `get_feishu_wiki_tree` first, then search later if needed.
+- After `delete_feishu_document` or `batch_delete_feishu_documents`, immediate verification may return a regular not-found response or Feishu `code=1770003` / `resource deleted`. Both should be treated as successful deletion confirmation, and current service code reports that as `postDeleteCheck.verifiedDeleted=true`.
+- `copy_section` and `move_section` operate on the full resolved section range, including trailing non-heading blocks such as images.
+- When a transferred section contains images, the service now downloads the source media bytes and re-uploads them into the target document. Copied images receive new file tokens and may take longer than text-only transfers.
+- `preview_edit_plan` is the safest way to confirm section boundaries before a cross-document copy or move, especially when the section may include images or nested child blocks.
+- If you just changed the server code, restart the MCP process before validating behavior from an external client. A long-running process will not pick up repo edits automatically.
 
 ## Advanced Docs
 

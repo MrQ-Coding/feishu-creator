@@ -9,9 +9,240 @@ import {
   documentIdSchema,
   documentRevisionIdSchema,
   headingLocatorFields,
+  targetHeadingLocatorFields,
 } from './commonSchemas.js';
 
+const previewOperationSchema = z.enum([
+  'insert_before_heading',
+  'replace_section_blocks',
+  'replace_section_with_ordered_list',
+  'delete_by_heading',
+  'copy_section',
+  'move_section',
+]);
+
 export function registerHeadingTools(server: McpServer, context: AppContext): void {
+  server.tool(
+    'copy_section',
+    'Copy one section by heading text/path and insert it into the same document or another document.',
+    {
+      documentId: documentIdSchema(),
+      ...headingLocatorFields({
+        sectionHeadingDescription: 'Source section heading text used for locating the section to copy.',
+      }),
+      ...targetHeadingLocatorFields({
+        sectionHeadingDescription: 'Optional target heading text used as the insertion anchor. Omit to append.',
+      }),
+      chunkSize: chunkedWriteFields({
+        resumeDescription: 'Unused for copy_section.',
+      }).chunkSize,
+      minChunkSize: chunkedWriteFields({
+        resumeDescription: 'Unused for copy_section.',
+      }).minChunkSize,
+      adaptiveChunking: chunkedWriteFields({
+        resumeDescription: 'Unused for copy_section.',
+      }).adaptiveChunking,
+      targetDocumentRevisionId: documentRevisionIdSchema().describe(
+        'Target document revision id for insertion. -1 means latest.',
+      ),
+    },
+    async ({
+      documentId,
+      sectionHeading,
+      headingPath,
+      parentBlockId,
+      sectionOccurrence,
+      pageSize,
+      targetDocumentId,
+      targetParentBlockId,
+      targetIndex,
+      targetSectionHeading,
+      targetHeadingPath,
+      targetSectionOccurrence,
+      targetPageSize,
+      targetDocumentRevisionId,
+      chunkSize,
+      minChunkSize,
+      adaptiveChunking,
+    }) => {
+      try {
+        assertHasHeadingLocator(sectionHeading, headingPath);
+        const result = await context.documentEditService.copySection({
+          documentId,
+          sectionHeading,
+          headingPath,
+          parentBlockId,
+          sectionOccurrence,
+          pageSize,
+          targetDocumentId,
+          targetParentBlockId,
+          targetIndex,
+          targetSectionHeading,
+          targetHeadingPath,
+          targetSectionOccurrence,
+          targetPageSize,
+          targetDocumentRevisionId,
+          chunkSize,
+          minChunkSize,
+          adaptiveChunking,
+        });
+        return jsonToolResult(result);
+      } catch (error) {
+        return errorToolResult('copy_section', error);
+      }
+    },
+  );
+
+  server.tool(
+    'move_section',
+    'Move one section by heading text/path within the same document or into another document.',
+    {
+      documentId: documentIdSchema(),
+      ...headingLocatorFields({
+        sectionHeadingDescription: 'Source section heading text used for locating the section to move.',
+      }),
+      ...targetHeadingLocatorFields({
+        sectionHeadingDescription: 'Optional target heading text used as the insertion anchor. Omit to append.',
+      }),
+      chunkSize: chunkedWriteFields({
+        resumeDescription: 'Unused for move_section.',
+      }).chunkSize,
+      minChunkSize: chunkedWriteFields({
+        resumeDescription: 'Unused for move_section.',
+      }).minChunkSize,
+      adaptiveChunking: chunkedWriteFields({
+        resumeDescription: 'Unused for move_section.',
+      }).adaptiveChunking,
+      targetDocumentRevisionId: documentRevisionIdSchema().describe(
+        'Target document revision id for insertion. -1 means latest.',
+      ),
+    },
+    async ({
+      documentId,
+      sectionHeading,
+      headingPath,
+      parentBlockId,
+      sectionOccurrence,
+      pageSize,
+      targetDocumentId,
+      targetParentBlockId,
+      targetIndex,
+      targetSectionHeading,
+      targetHeadingPath,
+      targetSectionOccurrence,
+      targetPageSize,
+      targetDocumentRevisionId,
+      chunkSize,
+      minChunkSize,
+      adaptiveChunking,
+    }) => {
+      try {
+        assertHasHeadingLocator(sectionHeading, headingPath);
+        const result = await context.documentEditService.moveSection({
+          documentId,
+          sectionHeading,
+          headingPath,
+          parentBlockId,
+          sectionOccurrence,
+          pageSize,
+          targetDocumentId,
+          targetParentBlockId,
+          targetIndex,
+          targetSectionHeading,
+          targetHeadingPath,
+          targetSectionOccurrence,
+          targetPageSize,
+          targetDocumentRevisionId,
+          chunkSize,
+          minChunkSize,
+          adaptiveChunking,
+        });
+        return jsonToolResult(result);
+      } catch (error) {
+        return errorToolResult('move_section', error);
+      }
+    },
+  );
+
+  server.tool(
+    'preview_edit_plan',
+    'Preview a semantic document edit plan without executing mutations. Returns matched headings, insertion positions, and blocks that would be deleted.',
+    {
+      operation: previewOperationSchema.describe(
+        'Edit operation to preview.',
+      ),
+      documentId: documentIdSchema(),
+      ...headingLocatorFields({
+        sectionHeadingDescription: 'Source or target section heading text used for locating the semantic edit anchor.',
+      }),
+      blocks: z
+        .array(richTextBlockSchema)
+        .optional()
+        .describe(
+          'Rich-text blocks for insert_before_heading or replace_section_blocks preview.',
+        ),
+      items: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Ordered-list item texts for replace_section_with_ordered_list preview.',
+        ),
+      includeHeading: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe('Whether delete_by_heading would also remove the heading block itself.'),
+      ...targetHeadingLocatorFields({
+        sectionHeadingDescription: 'Optional target heading text used as the insertion anchor for copy_section or move_section preview.',
+      }),
+    },
+    async ({
+      operation,
+      documentId,
+      sectionHeading,
+      headingPath,
+      parentBlockId,
+      sectionOccurrence,
+      pageSize,
+      blocks,
+      items,
+      includeHeading,
+      targetDocumentId,
+      targetParentBlockId,
+      targetIndex,
+      targetSectionHeading,
+      targetHeadingPath,
+      targetSectionOccurrence,
+      targetPageSize,
+    }) => {
+      try {
+        assertHasHeadingLocator(sectionHeading, headingPath);
+        const result = await context.documentEditService.previewEditPlan({
+          operation,
+          documentId,
+          sectionHeading,
+          headingPath,
+          parentBlockId,
+          sectionOccurrence,
+          pageSize,
+          blocks,
+          items,
+          includeHeading,
+          targetDocumentId,
+          targetParentBlockId,
+          targetIndex,
+          targetSectionHeading,
+          targetHeadingPath,
+          targetSectionOccurrence,
+          targetPageSize,
+        });
+        return jsonToolResult(result);
+      } catch (error) {
+        return errorToolResult('preview_edit_plan', error);
+      }
+    },
+  );
+
   server.tool(
     'insert_before_heading',
     'Locate a heading and insert rich-text blocks right before it in one call (progressive scan + insert).',
@@ -193,13 +424,16 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
 
   server.tool(
     'replace_section_with_ordered_list',
-    'Replace one section content with Feishu native ordered-list blocks by heading text. Uses minimal block traversal and no markdown convert.',
+    'Replace one section content with Feishu native ordered-list blocks by heading text. Uses minimal block traversal and supports inline code spans with backticks.',
     {
       documentId: documentIdSchema(),
       ...headingLocatorFields({
         sectionHeadingDescription: 'Section heading text used for locating replacement range.',
       }),
-      items: z.array(z.string()).min(1).describe('Ordered-list item texts. Empty strings are ignored.'),
+      items: z
+        .array(z.string())
+        .min(1)
+        .describe('Ordered-list item texts. Empty strings are ignored; inline code spans with backticks are supported.'),
       documentRevisionId: documentRevisionIdSchema(),
     },
     async ({

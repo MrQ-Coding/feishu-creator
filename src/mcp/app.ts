@@ -3,6 +3,7 @@ import type { AppContext } from "../appContext.js";
 import { registerAuthTools } from "./tools/authTools.js";
 import { registerDocumentCoreTools } from "./tools/documentCoreTools.js";
 import { registerDocumentEditTools } from "./tools/documentEditTools.js";
+import { registerDocumentMarkdownTools } from "./tools/documentMarkdownTools.js";
 import { registerWikiTools } from "./tools/wikiTools.js";
 
 export const serverInfo = {
@@ -18,6 +19,7 @@ export function createMcpServer(context: AppContext): McpServer {
   registerAuthTools(server, context);
   registerDocumentCoreTools(server, context);
   registerDocumentEditTools(server, context);
+  registerDocumentMarkdownTools(server, context);
   registerWikiTools(server, context);
 
   return server;

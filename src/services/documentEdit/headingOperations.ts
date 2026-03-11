@@ -9,3 +9,5 @@ export {
   replaceSectionWithOrderedListCore,
 } from './headingWrites.js';
 export { deleteByHeadingCore } from './headingDeletes.js';
+export { copySectionCore, moveSectionCore } from './sectionTransfers.js';
+export { previewEditPlanCore } from './previewPlans.js';

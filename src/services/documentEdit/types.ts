@@ -127,6 +127,110 @@ export interface ReplaceSectionWithOrderedListResult {
   createdBlockIds: string[];
 }
 
+export type PreviewEditOperation =
+  | 'insert_before_heading'
+  | 'replace_section_blocks'
+  | 'replace_section_with_ordered_list'
+  | 'delete_by_heading'
+  | 'copy_section'
+  | 'move_section';
+
+export interface PreviewBlockSummary {
+  blockId?: string;
+  index: number;
+  blockType:
+    | number
+    | 'heading'
+    | 'text'
+    | 'ordered'
+    | 'bullet'
+    | 'quote'
+    | 'code'
+    | 'image'
+    | 'page'
+    | 'unknown';
+  textPreview: string;
+  hasChildren: boolean;
+  childCount: number;
+}
+
+export interface PreviewCreateBlockSummary {
+  position: number;
+  blockType: RichTextBlockType | 'image' | 'page' | 'unknown' | number;
+  textPreview: string;
+  headingLevel?: number;
+  codeLanguage?: number;
+  codeWrap?: boolean;
+}
+
+export interface PreviewLocateTarget {
+  documentId: string;
+  parentBlockId: string;
+  sectionHeading: string;
+  sectionOccurrence: number;
+  headingIndex: number;
+  startIndex: number;
+  endIndex: number;
+  scannedChildrenCount: number;
+  scannedAllChildren: boolean;
+}
+
+export interface PreviewInsertionTarget {
+  documentId: string;
+  parentBlockId: string;
+  insertIndex: number;
+  mode: 'before_heading' | 'explicit_index' | 'append';
+  anchorHeading?: string;
+}
+
+export interface PreviewCreatePlan {
+  documentId: string;
+  parentBlockId: string;
+  insertIndex: number;
+  blockCount: number;
+  typeCounts?: Partial<Record<RichTextBlockType, number>>;
+  topLevelBlockCount?: number;
+  estimatedCopiedBlockCount?: number;
+  blocks: PreviewCreateBlockSummary[];
+}
+
+export interface PreviewDeletePlan {
+  documentId: string;
+  parentBlockId: string;
+  startIndex: number;
+  endIndex: number;
+  deletedCount: number;
+  blocks: PreviewBlockSummary[];
+  includeHeading?: boolean;
+  currentRangeStartIndex?: number;
+  currentRangeEndIndex?: number;
+  note?: string;
+}
+
+export interface PreviewEditPlanInput extends SectionCopyTargetInput {
+  documentId: string;
+  operation: PreviewEditOperation;
+  sectionHeading?: string;
+  headingPath?: string[];
+  parentBlockId?: string;
+  sectionOccurrence?: number;
+  pageSize?: number;
+  blocks?: RichTextBlockSpec[];
+  items?: string[];
+  includeHeading?: boolean;
+}
+
+export interface PreviewEditPlanResult {
+  dryRun: true;
+  operation: PreviewEditOperation;
+  summary: string;
+  source?: PreviewLocateTarget;
+  target?: PreviewLocateTarget | PreviewInsertionTarget;
+  createPlan?: PreviewCreatePlan;
+  deletePlan?: PreviewDeletePlan;
+  warnings: string[];
+}
+
 export interface LocateSectionRangeInput {
   documentId: string;
   sectionHeading?: string;
@@ -227,6 +331,51 @@ export interface DeleteByHeadingResult {
   deletedCount: number;
   scannedChildrenCount: number;
   scannedAllChildren: boolean;
+}
+
+export interface SectionCopyTargetInput {
+  targetDocumentId?: string;
+  targetParentBlockId?: string;
+  targetIndex?: number;
+  targetSectionHeading?: string;
+  targetHeadingPath?: string[];
+  targetSectionOccurrence?: number;
+  targetPageSize?: number;
+  targetDocumentRevisionId?: number;
+  chunkSize?: number;
+  minChunkSize?: number;
+  adaptiveChunking?: boolean;
+}
+
+export interface CopySectionInput extends SectionCopyTargetInput {
+  documentId: string;
+  sectionHeading?: string;
+  headingPath?: string[];
+  parentBlockId?: string;
+  sectionOccurrence?: number;
+  pageSize?: number;
+}
+
+export interface CopySectionResult {
+  sourceDocumentId: string;
+  sourceParentBlockId: string;
+  sourceSectionHeading: string;
+  sourceSectionOccurrence: number;
+  sourceStartIndex: number;
+  sourceEndIndex: number;
+  targetDocumentId: string;
+  targetParentBlockId: string;
+  targetAnchorHeading?: string;
+  insertIndex: number;
+  topLevelBlockCount: number;
+  copiedBlockCount: number;
+  createdBlockIds: string[];
+}
+
+export interface MoveSectionInput extends CopySectionInput {}
+
+export interface MoveSectionResult extends CopySectionResult {
+  deletedCount: number;
 }
 
 export interface UpdateBlockTextInput {

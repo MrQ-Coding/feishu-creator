@@ -67,13 +67,17 @@
 
 ### 文档基础
 
+本服务以 wiki 为主，不提供独立的 Drive 浏览/搜索工具；保留的 Drive 相关能力仅限于基于 `folderToken` 的兼容创建，以及文档搜索兜底、图片上传、删除落点判断这些仍然依赖的内部能力。
+
 | 工具 | 作用 |
 | --- | --- |
-| `create_feishu_document` | 在 drive/wiki 创建文档 |
+| `create_feishu_document` | 在 wiki 创建文档，或在传入 `folderToken` 时创建到 Drive 文件夹 |
 | `get_feishu_document_info` | 查询文档基础信息 |
 | `get_feishu_document_blocks` | 查询文档块结构 |
 | `delete_feishu_document` | 删除单个文档/wiki 节点 |
 | `batch_delete_feishu_documents` | 批量删除文档/wiki 节点 |
+| `import_markdown_to_feishu` | 将简化 Markdown 导入文档 |
+| `export_feishu_document_to_markdown` | 将文档导出为简化 Markdown |
 
 ### 文档编辑
 
@@ -84,6 +88,9 @@
 | `delete_feishu_document_blocks` | 按索引区间删除子块 |
 | `batch_create_feishu_blocks` | 批量创建子块 |
 | `locate_section_range` | 按标题定位 section 范围 |
+| `copy_section` | 在同文档/跨文档复制 section |
+| `move_section` | 在同文档/跨文档移动 section |
+| `preview_edit_plan` | 预览语义化编辑计划，不真正修改文档 |
 | `insert_before_heading` | 在标题前插入内容 |
 | `replace_section_blocks` | 替换 section 内容 |
 | `delete_by_heading` | 按标题删除 section |
@@ -107,6 +114,32 @@
 | --- | --- | --- |
 | 对象数组 | 推荐 | `[{ "text": "你好，世界" }]` |
 | 字符串数组 | 向后兼容（自动归一化） | `["你好，世界"]` |
+
+## 富文本里的内联代码
+
+`generate_section_blocks`、`generate_rich_text_blocks`、`replace_section_blocks`、`insert_before_heading`、`replace_section_with_ordered_list` 的文本字段支持轻量级内联代码解析：
+
+- 使用反引号包裹代码片段，例如 ``请执行 `npm run build` ``。
+- 仅解析内联代码 span，不会把整段文本当作完整 Markdown 文档处理。
+- `code` 类型块仍按原样写入，不会把其中的反引号再解释成内联样式。
+
+## Markdown 导入与导出
+
+第一版 Markdown 工作流是“够用优先”的轻量实现，不追求完全无损。
+
+- 导入支持标题、段落、有序列表、无序列表、引用、围栏代码块和内联代码。
+- 导出支持同一组块类型，并会尽量输出粗体、斜体、删除线、内联代码，以及下划线形式的 `<u>...</u>`。
+- 目前还不保留嵌套列表、表格、附件以及其他飞书特有的高级块。
+
+## 操作注意事项
+
+- `create_feishu_document` 的常规用法是 wiki-first。新建知识库页面请传 `wikiContext.spaceId`；只有明确需要兼容 Drive 文件夹时才传 `folderToken`。
+- 新建或删除文档后，不要第一时间用 `search_feishu_documents` 当成验收依据。应先用 `get_feishu_document_info` 或 `get_feishu_wiki_tree`，搜索可留到索引同步后再做。
+- `delete_feishu_document` 或 `batch_delete_feishu_documents` 的即时校验，可能返回普通 not-found，也可能返回飞书 `code=1770003` / `resource deleted`。这两种都应视为“删除已成功确认”，当前服务会把它们统一映射成 `postDeleteCheck.verifiedDeleted=true`。
+- `copy_section` 和 `move_section` 处理的是完整 section 区间，标题后面紧跟的图片等非标题块也会一起算进去。
+- 当 section 内含图片时，服务会先下载源图片字节，再在目标文档重新上传，所以复制后的图片会拿到新的 `file_token`，整体也会比纯文本转移更慢。
+- 跨文档 `copy_section` / `move_section` 前，优先用 `preview_edit_plan` 看清 section 边界，尤其是末尾可能带图片或子块时。
+- 如果你刚改过服务端代码，要先重启 MCP 进程，再用外部客户端验行为；长时间运行的进程不会自动拾取仓库里的最新修改。
 
 ## 高级文档
 

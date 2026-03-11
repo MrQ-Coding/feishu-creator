@@ -176,8 +176,10 @@ export function isNotFoundError(error: unknown): boolean {
   return (
     message.includes('http 404') ||
     message.includes('code=1770002') ||
+    message.includes('code=1770003') ||
     message.includes('code=1061045') ||
     message.includes('code=131005') ||
+    message.includes('resource deleted') ||
     message.includes('not found')
   );
 }

@@ -9,14 +9,14 @@ export function registerDocumentCoreTools(
 ): void {
   server.tool(
     "create_feishu_document",
-    "Create a new Feishu document in a Drive folder or wiki space node. In wiki mode it returns both node token and document ID for follow-up editing.",
+    "Create a new Feishu document. Wiki creation is the primary mode; folderToken is retained for Drive-folder compatibility. In wiki mode it returns both node token and document ID for follow-up editing.",
     {
       title: z.string().min(1).describe("Document title."),
       folderToken: z
         .string()
         .optional()
         .describe(
-          "Feishu Drive folder token. Use this mode to create under a Drive folder.",
+          "Optional Feishu Drive folder token for compatibility when creating under a Drive folder instead of wiki.",
         ),
       wikiContext: z
         .object({

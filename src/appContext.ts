@@ -6,6 +6,7 @@ import { DocumentBlockService } from "./services/documentBlockService.js";
 import { DocumentCreateService } from "./services/documentCreateService.js";
 import { DocumentEditService } from "./services/documentEditService.js";
 import { DocumentInfoService } from "./services/documentInfoService.js";
+import { MarkdownDocumentService } from "./services/markdownDocumentService.js";
 import { SearchService } from "./services/searchService.js";
 import { WikiBrowserDeletionService } from "./services/wikiBrowserDeletionService.js";
 import { WikiSpaceService } from "./services/wikiSpaceService.js";
@@ -19,6 +20,7 @@ export interface AppContext {
   documentCreateService: DocumentCreateService;
   documentEditService: DocumentEditService;
   documentInfoService: DocumentInfoService;
+  markdownDocumentService: MarkdownDocumentService;
   searchService: SearchService;
   wikiSpaceService: WikiSpaceService;
   wikiTreeService: WikiTreeService;
@@ -45,6 +47,10 @@ export function createAppContext(config: AppConfig): AppContext {
     documentInfoService,
     wikiBrowserDeletionService,
     config.feishu,
+  );
+  const markdownDocumentService = new MarkdownDocumentService(
+    documentBlockService,
+    documentEditService,
   );
 
   const cleanupTimer = setInterval(() => {
@@ -83,6 +89,7 @@ export function createAppContext(config: AppConfig): AppContext {
     documentCreateService,
     documentEditService,
     documentInfoService,
+    markdownDocumentService,
     searchService,
     wikiSpaceService,
     wikiTreeService,

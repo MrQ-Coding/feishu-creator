@@ -38,6 +38,11 @@ HTTP 模式下回调地址：
 2. 直连失败后回退 UI 自动化删除。
 3. 无头模式遇到登录态失效时，若有 GUI，则走交互恢复登录后重试无头删除。
 
+### 即时校验语义
+
+- 删除后的即时校验，会把普通 not-found 和飞书 `code=1770003` / `resource deleted` 都视为“删除已成功确认”。
+- 在当前服务返回结构里，这种情况应表现为 `postDeleteCheck.verifiedDeleted=true`。
+
 ### 浏览器选择优先级
 
 | 优先级 | 规则 |
@@ -78,3 +83,23 @@ npm run profile:bootstrap -- --source .playwright/system-chrome-clone-20260306-1
 | `FEISHU_WIKI_TREE_MAX_CONCURRENCY` |
 | `FEISHU_CACHE_MAX_ENTRIES` |
 | `FEISHU_CACHE_CLEANUP_INTERVAL_SECONDS` |
+
+## Section 复制 / 移动
+
+- `copy_section` 会复制完整的 section 区间，包含标题块本身。
+- `move_section` 采用“先复制、后删除源 section”的流程；如果删除源 section 失败，会尽力回滚目标侧插入。
+- 目标位置可以用 `targetIndex` 指定，也可以用 `targetSectionHeading` / `targetHeadingPath` 作为插入锚点。
+- 如果不提供目标锚点，会追加到 `targetParentBlockId`（未指定时为目标文档根块）末尾。
+- 在同一父块下移动时，如果目标位置落在源 section 内部，会直接拒绝，避免自重叠。
+- 在同一父块下，直到遇到下一个标题前的非标题块都属于这个 section，末尾图片也不例外。
+- 如果 section 内含图片，当前实现会走“媒体重建”：先下载源图片字节，再上传到目标文档，因此复制后的图片会拿到新的 `file_token`。
+- `preview_edit_plan` 遇到图片或嵌套子块时会给 warning。这个 warning 主要是提示行为和耗时，不等于工具必然失败。
+- 图片重建依赖当前鉴权上下文具备源图片下载权限；如果鉴权模式受限，这条链路仍可能失败。
+
+## 本地代码改动后的验证方式
+
+如果你改的是服务实现本身，不要默认一个已经运行中的 MCP 进程会自动加载新代码。
+
+1. 通过外部客户端验证前，先重启 MCP 服务。
+2. 或者直接调用本地 service 层做集成验证。
+3. 记录测试结论时，明确标注证据来自 MCP 工具调用、本地脚本，还是代码阅读推断。

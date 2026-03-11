@@ -8,6 +8,13 @@ export function documentIdSchema() {
     );
 }
 
+export function optionalTargetDocumentIdSchema() {
+  return z
+    .string()
+    .optional()
+    .describe('Optional target document ID or URL. Defaults to the source document.');
+}
+
 export function optionalParentBlockIdSchema() {
   return z
     .string()
@@ -26,6 +33,17 @@ export function optionalIndexSchema() {
     .min(0)
     .optional()
     .describe('Insert position in parent children. Omit to append.');
+}
+
+export function targetIndexSchema() {
+  return z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      'Optional target insert position in target parent children. Do not combine with targetSectionHeading/targetHeadingPath.',
+    );
 }
 
 export function sectionHeadingSchema(description: string) {
@@ -153,5 +171,41 @@ export function chunkedWriteFields(options: {
     checkpointTokenSeed: checkpointTokenSeedSchema(),
     documentRevisionId: documentRevisionIdSchema(),
     continueOnError: continueOnErrorSchema(),
+  };
+}
+
+export function targetHeadingLocatorFields(options: {
+  sectionHeadingDescription: string;
+}) {
+  return {
+    targetDocumentId: optionalTargetDocumentIdSchema(),
+    targetParentBlockId: z
+      .string()
+      .optional()
+      .describe('Optional target parent block ID. Defaults to target document root block.'),
+    targetIndex: targetIndexSchema(),
+    targetSectionHeading: sectionHeadingSchema(options.sectionHeadingDescription),
+    targetHeadingPath: z
+      .array(z.string())
+      .min(1)
+      .optional()
+      .describe(
+        "Optional target heading path, e.g. ['二、章节', '2.1 小节']. If provided, it takes priority over targetSectionHeading.",
+      ),
+    targetSectionOccurrence: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .default(1)
+      .describe('If target heading text/path appears multiple times, choose the Nth occurrence.'),
+    targetPageSize: z
+      .number()
+      .int()
+      .min(1)
+      .max(500)
+      .optional()
+      .default(200)
+      .describe('Page size for progressive listing under the target parent block.'),
   };
 }

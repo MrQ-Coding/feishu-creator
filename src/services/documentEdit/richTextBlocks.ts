@@ -132,7 +132,7 @@ export function buildCodeBlock(
   wrap?: boolean,
 ): Record<string, unknown> {
   const code: Record<string, unknown> = {
-    elements: buildTextElements(text),
+    elements: buildTextElements(text, { parseInlineCode: false }),
   };
   if (language !== undefined || wrap !== undefined) {
     const style: Record<string, unknown> = {};
@@ -180,12 +180,126 @@ export function buildHeadingBlock(
   };
 }
 
-function buildTextElements(text: string): Array<Record<string, unknown>> {
-  return [
-    {
-      text_run: {
-        content: text,
-      },
-    },
-  ];
+function buildTextElements(
+  text: string,
+  options: { parseInlineCode?: boolean } = { parseInlineCode: true },
+): Array<Record<string, unknown>> {
+  if (options.parseInlineCode === false) {
+    return [buildPlainTextElement(text)];
+  }
+
+  const elements: Array<Record<string, unknown>> = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const opening = findBacktickRun(text, cursor);
+    if (!opening) {
+      pushTextElement(elements, text.slice(cursor));
+      break;
+    }
+
+    if (opening.index > cursor) {
+      pushTextElement(elements, text.slice(cursor, opening.index));
+    }
+
+    const closing = findMatchingBacktickRun(
+      text,
+      opening.index + opening.length,
+      opening.length,
+    );
+    if (!closing) {
+      pushTextElement(elements, text.slice(opening.index, opening.index + opening.length));
+      cursor = opening.index + opening.length;
+      continue;
+    }
+
+    elements.push(
+      buildStyledTextElement(
+        normalizeInlineCodeContent(
+          text.slice(opening.index + opening.length, closing.index),
+        ),
+        { inline_code: true },
+      ),
+    );
+    cursor = closing.index + closing.length;
+  }
+
+  return elements.length > 0 ? elements : [buildPlainTextElement("")];
+}
+
+function buildPlainTextElement(text: string): Record<string, unknown> {
+  return buildStyledTextElement(text);
+}
+
+function buildStyledTextElement(
+  text: string,
+  style?: { inline_code?: boolean },
+): Record<string, unknown> {
+  const textRun: Record<string, unknown> = {
+    content: text,
+  };
+  if (style?.inline_code) {
+    textRun.text_element_style = {
+      inline_code: true,
+    };
+  }
+  return {
+    text_run: textRun,
+  };
+}
+
+function pushTextElement(
+  elements: Array<Record<string, unknown>>,
+  text: string,
+): void {
+  if (text.length === 0) return;
+  elements.push(buildPlainTextElement(text));
+}
+
+function findBacktickRun(
+  text: string,
+  start: number,
+): { index: number; length: number } | null {
+  for (let index = start; index < text.length; index += 1) {
+    if (text[index] !== "`") continue;
+    let end = index + 1;
+    while (end < text.length && text[end] === "`") {
+      end += 1;
+    }
+    return {
+      index,
+      length: end - index,
+    };
+  }
+  return null;
+}
+
+function findMatchingBacktickRun(
+  text: string,
+  start: number,
+  targetLength: number,
+): { index: number; length: number } | null {
+  let index = start;
+  while (index < text.length) {
+    const match = findBacktickRun(text, index);
+    if (!match) return null;
+    if (match.length === targetLength) {
+      return match;
+    }
+    index = match.index + match.length;
+  }
+  return null;
+}
+
+function normalizeInlineCodeContent(text: string): string {
+  const normalizedWhitespace = text.replace(/\r\n?/g, "\n").replace(/\n/g, " ");
+  if (
+    normalizedWhitespace.length >= 2 &&
+    normalizedWhitespace.startsWith(" ") &&
+    normalizedWhitespace.endsWith(" ") &&
+    /[^ ]/.test(normalizedWhitespace)
+  ) {
+    return normalizedWhitespace.slice(1, -1);
+  }
+  return normalizedWhitespace;
 }

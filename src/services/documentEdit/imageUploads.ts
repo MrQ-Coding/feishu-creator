@@ -30,6 +30,33 @@ interface NormalizedUploadInput {
   documentRevisionId: number;
 }
 
+export interface UploadImageBytesInput {
+  imageBytes: Buffer;
+  fileName: string;
+  mimeType: string;
+  imageBlockId?: string;
+  parentBlockId?: string;
+  index?: number;
+  width: number;
+  height: number;
+  documentRevisionId?: number;
+}
+
+export interface UploadImageBytesResult {
+  mode: 'insert' | 'replace';
+  imageBlockId: string;
+  parentBlockId?: string;
+  replaceBlockId?: string;
+  index?: number;
+  fileName: string;
+  mimeType: string;
+  fileToken: string;
+  size: number;
+  width: number;
+  height: number;
+  documentRevisionId?: number;
+}
+
 export async function uploadLocalImageCore(
   runtime: DocumentEditRuntime,
   normalizedDocumentId: string,
@@ -37,94 +64,86 @@ export async function uploadLocalImageCore(
 ): Promise<UploadLocalImageResult> {
   const normalized = await normalizeUploadInput(input);
   const imageBytes = await readFile(normalized.imagePath);
-  let imageBlockId = normalized.imageBlockId;
-  let currentRevisionId = normalized.documentRevisionId;
-  let mode: UploadLocalImageResult['mode'] = 'replace';
-
-  if (!imageBlockId) {
-    mode = 'insert';
-    const requestBody: Record<string, unknown> = {
-      children: [
-        {
-          block_type: 27,
-          image: {
-            width: normalized.width,
-            height: normalized.height,
-            token: '',
-          },
-        },
-      ],
-    };
-    if (normalized.index !== undefined) {
-      requestBody.index = normalized.index;
-    }
-
-    const createResult = await runtime.feishuClient.request<CreateBlockChildrenResponse>(
-      `/docx/v1/documents/${normalizedDocumentId}/blocks/${normalized.parentBlockId}/children`,
-      'POST',
-      requestBody,
-      {
-        document_revision_id: currentRevisionId,
-        client_token: randomUUID(),
-      },
-    );
-    imageBlockId = extractBlockIds(createResult.children ?? [])[0];
-    if (!imageBlockId) {
-      throw new Error('Image block creation failed: response missing created block_id.');
-    }
-    if (typeof createResult.document_revision_id === 'number') {
-      currentRevisionId = createResult.document_revision_id;
-    }
-  }
-
-  const formData = new FormData();
-  const blob = new Blob([imageBytes], { type: normalized.mimeType });
-  formData.append('file', blob, normalized.fileName);
-  formData.append('file_name', normalized.fileName);
-  formData.append('parent_type', 'docx_image');
-  formData.append('parent_node', imageBlockId);
-  formData.append('size', String(imageBytes.byteLength));
-
-  const uploadResult = await runtime.feishuClient.request<UploadMediaResponse>(
-    '/drive/v1/medias/upload_all',
-    'POST',
-    formData,
-  );
-  const fileToken = uploadResult.file_token?.trim();
-  if (!fileToken) {
-    throw new Error('Image upload failed: response missing file_token.');
-  }
-
-  const bindResult = await runtime.feishuClient.request<UpdateImageBlockResponse>(
-    `/docx/v1/documents/${normalizedDocumentId}/blocks/${imageBlockId}`,
-    'PATCH',
-    {
-      replace_image: {
-        token: fileToken,
-      },
-    },
-    {
-      document_revision_id: currentRevisionId,
-    },
-  );
-
-  runtime.invalidateDocumentState(normalizedDocumentId);
+  const uploadResult = await uploadImageBytesCore(runtime, normalizedDocumentId, {
+    imageBytes,
+    fileName: normalized.fileName,
+    mimeType: normalized.mimeType,
+    imageBlockId: normalized.imageBlockId,
+    parentBlockId: normalized.parentBlockId,
+    index: normalized.index,
+    width: normalized.width,
+    height: normalized.height,
+    documentRevisionId: normalized.documentRevisionId,
+  });
 
   return {
     documentId: normalizedDocumentId,
-    mode,
-    imageBlockId,
+    mode: uploadResult.mode,
+    imageBlockId: uploadResult.imageBlockId,
     parentBlockId: normalized.parentBlockId,
     replaceBlockId: normalized.imageBlockId,
     index: normalized.index,
     imagePath: normalized.imagePath,
     fileName: normalized.fileName,
     mimeType: normalized.mimeType,
-    fileToken,
-    size: imageBytes.byteLength,
+    fileToken: uploadResult.fileToken,
+    size: uploadResult.size,
     width: normalized.width,
     height: normalized.height,
-    documentRevisionId: bindResult.document_revision_id,
+    documentRevisionId: uploadResult.documentRevisionId,
+  };
+}
+
+export async function uploadImageBytesCore(
+  runtime: DocumentEditRuntime,
+  normalizedDocumentId: string,
+  input: UploadImageBytesInput,
+): Promise<UploadImageBytesResult> {
+  const normalized = normalizeUploadBytesInput(input);
+  let imageBlockId = normalized.imageBlockId;
+  let currentRevisionId = normalized.documentRevisionId;
+  let mode: UploadImageBytesResult['mode'] = 'replace';
+
+  if (!imageBlockId) {
+    mode = 'insert';
+    const createResult = await createImageBlock(runtime, normalizedDocumentId, {
+      parentBlockId: normalized.parentBlockId,
+      index: normalized.index,
+      width: normalized.width,
+      height: normalized.height,
+      documentRevisionId: currentRevisionId,
+    });
+    imageBlockId = createResult.imageBlockId;
+    if (typeof createResult.documentRevisionId === 'number') {
+      currentRevisionId = createResult.documentRevisionId;
+    }
+  }
+
+  const { fileToken, documentRevisionId } = await uploadImageBytesToBlock(
+    runtime,
+    normalizedDocumentId,
+    {
+      imageBlockId,
+      imageBytes: normalized.imageBytes,
+      fileName: normalized.fileName,
+      mimeType: normalized.mimeType,
+      documentRevisionId: currentRevisionId,
+    },
+  );
+
+  return {
+    mode,
+    imageBlockId,
+    parentBlockId: normalized.parentBlockId,
+    replaceBlockId: normalized.imageBlockId,
+    index: normalized.index,
+    fileName: normalized.fileName,
+    mimeType: normalized.mimeType,
+    fileToken,
+    size: normalized.imageBytes.byteLength,
+    width: normalized.width,
+    height: normalized.height,
+    documentRevisionId,
   };
 }
 
@@ -171,6 +190,149 @@ async function normalizeUploadInput(
     width,
     height,
     documentRevisionId: normalizeRevisionId(input.documentRevisionId),
+  };
+}
+
+function normalizeUploadBytesInput(input: UploadImageBytesInput): UploadImageBytesInput & {
+  imageBlockId?: string;
+  parentBlockId?: string;
+  index?: number;
+  documentRevisionId: number;
+} {
+  const imageBlockId = input.imageBlockId?.trim() || undefined;
+  const parentBlockId = input.parentBlockId?.trim() || undefined;
+  if (imageBlockId && parentBlockId) {
+    throw new Error('Provide either imageBlockId or parentBlockId, not both.');
+  }
+  if (!imageBlockId && !parentBlockId) {
+    throw new Error('Either imageBlockId or parentBlockId is required.');
+  }
+  const fileName = input.fileName?.trim();
+  if (!fileName) {
+    throw new Error('fileName is required.');
+  }
+  const mimeType = input.mimeType?.trim();
+  if (!mimeType) {
+    throw new Error('mimeType is required.');
+  }
+  if (!(input.imageBytes instanceof Buffer) || input.imageBytes.byteLength === 0) {
+    throw new Error('imageBytes must be a non-empty Buffer.');
+  }
+
+  const width = normalizePositiveInt(input.width, 'width');
+  const height = normalizePositiveInt(input.height, 'height');
+  if (!width || !height) {
+    throw new Error('width and height are required.');
+  }
+
+  return {
+    imageBytes: input.imageBytes,
+    fileName,
+    mimeType,
+    imageBlockId,
+    parentBlockId,
+    index: normalizeOptionalIndex(input.index),
+    width,
+    height,
+    documentRevisionId: normalizeRevisionId(input.documentRevisionId),
+  };
+}
+
+async function createImageBlock(
+  runtime: DocumentEditRuntime,
+  normalizedDocumentId: string,
+  input: {
+    parentBlockId?: string;
+    index?: number;
+    width: number;
+    height: number;
+    documentRevisionId: number;
+  },
+): Promise<{ imageBlockId: string; documentRevisionId?: number }> {
+  const requestBody: Record<string, unknown> = {
+    children: [
+      {
+        block_type: 27,
+        image: {
+          width: input.width,
+          height: input.height,
+          token: '',
+        },
+      },
+    ],
+  };
+  if (input.index !== undefined) {
+    requestBody.index = input.index;
+  }
+
+  const createResult = await runtime.feishuClient.request<CreateBlockChildrenResponse>(
+    `/docx/v1/documents/${normalizedDocumentId}/blocks/${input.parentBlockId}/children`,
+    'POST',
+    requestBody,
+    {
+      document_revision_id: input.documentRevisionId,
+      client_token: randomUUID(),
+    },
+  );
+  const imageBlockId = extractBlockIds(createResult.children ?? [])[0];
+  if (!imageBlockId) {
+    throw new Error('Image block creation failed: response missing created block_id.');
+  }
+  return {
+    imageBlockId,
+    documentRevisionId: createResult.document_revision_id,
+  };
+}
+
+async function uploadImageBytesToBlock(
+  runtime: DocumentEditRuntime,
+  normalizedDocumentId: string,
+  input: {
+    imageBlockId: string;
+    imageBytes: Buffer;
+    fileName: string;
+    mimeType: string;
+    documentRevisionId: number;
+  },
+): Promise<{ fileToken: string; documentRevisionId?: number }> {
+  const formData = new FormData();
+  const blob = new Blob([new Uint8Array(input.imageBytes)], {
+    type: input.mimeType,
+  });
+  formData.append('file', blob, input.fileName);
+  formData.append('file_name', input.fileName);
+  formData.append('parent_type', 'docx_image');
+  formData.append('parent_node', input.imageBlockId);
+  formData.append('size', String(input.imageBytes.byteLength));
+
+  const uploadResult = await runtime.feishuClient.request<UploadMediaResponse>(
+    '/drive/v1/medias/upload_all',
+    'POST',
+    formData,
+  );
+  const fileToken = uploadResult.file_token?.trim();
+  if (!fileToken) {
+    throw new Error('Image upload failed: response missing file_token.');
+  }
+
+  const bindResult = await runtime.feishuClient.request<UpdateImageBlockResponse>(
+    `/docx/v1/documents/${normalizedDocumentId}/blocks/${input.imageBlockId}`,
+    'PATCH',
+    {
+      replace_image: {
+        token: fileToken,
+      },
+    },
+    {
+      document_revision_id: input.documentRevisionId,
+    },
+  );
+
+  runtime.invalidateDocumentState(normalizedDocumentId);
+
+  return {
+    fileToken,
+    documentRevisionId: bindResult.document_revision_id,
   };
 }
 

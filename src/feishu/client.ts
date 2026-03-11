@@ -8,6 +8,12 @@ interface RequestOptions {
   authTypeOverride?: "tenant" | "user";
 }
 
+export interface FeishuBinaryResponse {
+  body: Buffer;
+  contentType?: string;
+  contentDisposition?: string;
+}
+
 class Semaphore {
   private active = 0;
   private readonly queue: Array<() => void> = [];
@@ -79,6 +85,18 @@ export class FeishuClient {
     );
   }
 
+  async requestBinary(
+    path: string,
+    method: RequestMethod = "GET",
+    body?: unknown,
+    query?: Record<string, string | number | boolean | undefined>,
+    options?: RequestOptions,
+  ): Promise<FeishuBinaryResponse> {
+    return this.semaphore.withLock(() =>
+      this.requestBinaryWithRetry(path, method, body, query, options),
+    );
+  }
+
   private buildUrl(
     path: string,
     query?: Record<string, string | number | boolean | undefined>,
@@ -121,6 +139,55 @@ export class FeishuClient {
           Logger.warn(`Feishu auth token expired, refreshing and retrying once: ${path}`);
           try {
             return await this.requestOnce<T>(path, method, body, query, options);
+          } catch (retryError) {
+            currentError = retryError;
+          }
+        }
+
+        lastError = currentError;
+        const retryable = this.isRetryableError(currentError);
+        const shouldRetry = retryable && attempt < maxAttempts;
+        if (!shouldRetry) break;
+
+        const backoffMs = this.computeBackoffMs(attempt, currentError);
+        Logger.warn(
+          `Feishu request retry ${attempt}/${maxAttempts - 1} in ${backoffMs}ms: ${path}`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(`Unknown request failure for ${path}`);
+  }
+
+  private async requestBinaryWithRetry(
+    path: string,
+    method: RequestMethod,
+    body?: unknown,
+    query?: Record<string, string | number | boolean | undefined>,
+    options?: RequestOptions,
+  ): Promise<FeishuBinaryResponse> {
+    const maxAttempts = this.config.requestMaxRetries + 1;
+    let lastError: unknown;
+    let authRecoveryAttempted = false;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await this.requestBinaryOnce(path, method, body, query, options);
+      } catch (error) {
+        let currentError: unknown = error;
+
+        if (this.isAuthExpiredError(currentError) && !authRecoveryAttempted) {
+          authRecoveryAttempted = true;
+          this.authManager.invalidateCachedAccessToken(
+            `auth expired response for ${path}`,
+            options?.authTypeOverride,
+          );
+          Logger.warn(`Feishu auth token expired, refreshing and retrying once: ${path}`);
+          try {
+            return await this.requestBinaryOnce(path, method, body, query, options);
           } catch (retryError) {
             currentError = retryError;
           }
@@ -208,6 +275,63 @@ export class FeishuClient {
       return (json.data ?? (json as unknown as T)) as T;
     }
     return (json as unknown as T) ?? ({} as T);
+  }
+
+  private async requestBinaryOnce(
+    path: string,
+    method: RequestMethod,
+    body?: unknown,
+    query?: Record<string, string | number | boolean | undefined>,
+    options?: RequestOptions,
+  ): Promise<FeishuBinaryResponse> {
+    const accessToken = await this.authManager.getAccessToken(
+      options?.authTypeOverride,
+    );
+    const url = this.buildUrl(path, query);
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${accessToken}`,
+    };
+    let requestBody: BodyInit | undefined;
+    if (body instanceof FormData) {
+      requestBody = body;
+    } else if (body === undefined) {
+      requestBody = undefined;
+    } else {
+      headers["Content-Type"] = "application/json";
+      requestBody = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: requestBody,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      const json = this.safeParseJson(text) as
+        | { code?: number; msg?: string; data?: unknown }
+        | null;
+      const retryAfterMs = this.parseRetryAfterMs(
+        response.headers.get("retry-after"),
+      );
+      const apiCode =
+        json && typeof json.code === "number" ? json.code : undefined;
+      throw new FeishuRequestError(
+        `Feishu API HTTP ${response.status}: ${text}`,
+        response.status,
+        apiCode,
+        retryAfterMs,
+      );
+    }
+
+    const bodyBuffer = Buffer.from(await response.arrayBuffer());
+    return {
+      body: bodyBuffer,
+      contentType: response.headers.get("content-type") ?? undefined,
+      contentDisposition:
+        response.headers.get("content-disposition") ?? undefined,
+    };
   }
 
   private safeParseJson(text: string): unknown {

@@ -17,9 +17,12 @@ import {
 } from './documentEdit/blockMutations.js';
 import { uploadLocalImageCore } from './documentEdit/imageUploads.js';
 import {
+  copySectionCore,
   deleteByHeadingCore,
   insertBeforeHeadingCore,
   locateSectionRangeCore,
+  moveSectionCore,
+  previewEditPlanCore,
   replaceSectionBlocksCore,
   replaceSectionWithOrderedListCore,
 } from './documentEdit/headingOperations.js';
@@ -36,6 +39,8 @@ export type {
   BatchDeleteDocumentsResult,
   BatchUpdateBlockTextInput,
   BatchUpdateBlockTextResult,
+  CopySectionInput,
+  CopySectionResult,
   DeleteByHeadingInput,
   DeleteByHeadingResult,
   DeleteDocumentBlocksInput,
@@ -50,6 +55,10 @@ export type {
   InsertBeforeHeadingResult,
   LocateSectionRangeInput,
   LocateSectionRangeResult,
+  MoveSectionInput,
+  MoveSectionResult,
+  PreviewEditPlanInput,
+  PreviewEditPlanResult,
   ReplaceSectionBlocksInput,
   ReplaceSectionBlocksResult,
   ReplaceSectionWithOrderedListInput,
@@ -70,6 +79,8 @@ import type {
   BatchDeleteDocumentsResult,
   BatchUpdateBlockTextInput,
   BatchUpdateBlockTextResult,
+  CopySectionInput,
+  CopySectionResult,
   DeleteByHeadingInput,
   DeleteByHeadingResult,
   DeleteDocumentBlocksInput,
@@ -84,6 +95,10 @@ import type {
   InsertBeforeHeadingResult,
   LocateSectionRangeInput,
   LocateSectionRangeResult,
+  MoveSectionInput,
+  MoveSectionResult,
+  PreviewEditPlanInput,
+  PreviewEditPlanResult,
   ReplaceSectionBlocksInput,
   ReplaceSectionBlocksResult,
   ReplaceSectionWithOrderedListInput,
@@ -140,6 +155,39 @@ export class DocumentEditService {
     const normalizedDocumentId = this.requireDocumentId(input.documentId);
     return this.withDocumentLock(normalizedDocumentId, () =>
       replaceSectionWithOrderedListCore(this.runtime, normalizedDocumentId, input),
+    );
+  }
+
+  async copySection(input: CopySectionInput): Promise<CopySectionResult> {
+    const sourceDocumentId = this.requireDocumentId(input.documentId);
+    const targetDocumentId = this.requireDocumentId(
+      input.targetDocumentId ?? input.documentId,
+    );
+    return this.withDocumentLocks([sourceDocumentId, targetDocumentId], () =>
+      copySectionCore(this.runtime, sourceDocumentId, input),
+    );
+  }
+
+  async moveSection(input: MoveSectionInput): Promise<MoveSectionResult> {
+    const sourceDocumentId = this.requireDocumentId(input.documentId);
+    const targetDocumentId = this.requireDocumentId(
+      input.targetDocumentId ?? input.documentId,
+    );
+    return this.withDocumentLocks([sourceDocumentId, targetDocumentId], () =>
+      moveSectionCore(this.runtime, sourceDocumentId, input),
+    );
+  }
+
+  async previewEditPlan(
+    input: PreviewEditPlanInput,
+  ): Promise<PreviewEditPlanResult> {
+    const sourceDocumentId = this.requireDocumentId(input.documentId);
+    const maybeTargetDocumentId =
+      input.targetDocumentId !== undefined
+        ? this.requireDocumentId(input.targetDocumentId)
+        : sourceDocumentId;
+    return this.withDocumentLocks([sourceDocumentId, maybeTargetDocumentId], () =>
+      previewEditPlanCore(this.runtime, sourceDocumentId, input),
     );
   }
 
@@ -346,5 +394,26 @@ export class DocumentEditService {
         this.documentLocks.delete(documentId);
       }
     }
+  }
+
+  private async withDocumentLocks<T>(
+    documentIds: string[],
+    task: () => Promise<T>,
+  ): Promise<T> {
+    const uniqueIds = [...new Set(documentIds)].sort();
+    return this.withDocumentLocksRecursive(uniqueIds, 0, task);
+  }
+
+  private async withDocumentLocksRecursive<T>(
+    documentIds: string[],
+    index: number,
+    task: () => Promise<T>,
+  ): Promise<T> {
+    if (index >= documentIds.length) {
+      return task();
+    }
+    return this.withDocumentLock(documentIds[index], () =>
+      this.withDocumentLocksRecursive(documentIds, index + 1, task),
+    );
   }
 }

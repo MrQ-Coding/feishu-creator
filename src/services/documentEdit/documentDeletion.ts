@@ -46,6 +46,14 @@ export async function deleteDocumentCore(
     if (deleteTarget.documentId) {
       runtime.invalidateDocumentState(deleteTarget.documentId);
     }
+    if (deleteTarget.wikiToken) {
+      runtime.documentInfoService.invalidateWiki(deleteTarget.wikiToken);
+    }
+
+    const postDeleteCheck = await verifyDeletedResource(
+      runtime,
+      deleteTarget.verifyTarget,
+    );
 
     return {
       sourceType,
@@ -54,10 +62,8 @@ export async function deleteDocumentCore(
       deleted: true,
       notFound: false,
       deletionMode: 'browser_delete',
-      postDeleteCheck: await verifyDeletedResource(
-        runtime,
-        deleteTarget.verifyTarget,
-      ),
+      note: buildDeleteVerificationNote(postDeleteCheck),
+      postDeleteCheck,
     };
   } catch (error) {
     if (ignoreNotFound && isNotFoundError(error)) {
@@ -82,6 +88,7 @@ interface BrowserDeleteInput {
 
 interface ResolvedBrowserDeleteTarget {
   documentId?: string;
+  wikiToken?: string;
   browserDeleteInput: BrowserDeleteInput;
   verifyTarget: {
     documentId: string;
@@ -150,6 +157,7 @@ async function resolveBrowserDeleteTarget(
 
     return {
       documentId,
+      wikiToken: nodeToken,
       browserDeleteInput: {
         nodeToken,
         documentId,
@@ -179,6 +187,7 @@ async function resolveBrowserDeleteTarget(
     const title = pickString(wikiInfo, ['title']);
     return {
       documentId,
+      wikiToken: nodeToken,
       browserDeleteInput: {
         nodeToken,
         documentId,
@@ -292,4 +301,16 @@ function pickString(source: Record<string, unknown>, keys: string[]): string | u
     }
   }
   return undefined;
+}
+
+function buildDeleteVerificationNote(
+  postDeleteCheck: NonNullable<DeleteDocumentResult['postDeleteCheck']>,
+): string | undefined {
+  if (postDeleteCheck.verifiedDeleted) {
+    return undefined;
+  }
+  if (postDeleteCheck.error) {
+    return `Delete request completed, but verification failed: ${postDeleteCheck.error}`;
+  }
+  return 'Delete request completed, but immediate verification did not observe a not-found response yet.';
 }

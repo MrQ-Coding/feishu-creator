@@ -67,6 +67,12 @@ export class DocumentInfoService {
     this.cache.delete(this.buildCacheKey("document", normalizedDocumentId));
   }
 
+  invalidateWiki(wikiTokenOrUrl: string): void {
+    const wikiToken = extractWikiToken(wikiTokenOrUrl);
+    if (!wikiToken) return;
+    this.cache.delete(this.buildCacheKey("wiki", wikiToken));
+  }
+
   cleanupExpired(): number {
     return this.cache.cleanupExpired();
   }

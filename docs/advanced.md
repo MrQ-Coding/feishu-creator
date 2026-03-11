@@ -38,6 +38,11 @@ When `MCP_HTTP_REQUIRE_AUTH=true`, include one of:
 2. If direct API fails, fall back to UI automation.
 3. If login is required in headless mode, run interactive recovery (if GUI is available), then retry headless deletion.
 
+### Immediate Verification Semantics
+
+- Post-delete verification treats both a normal not-found response and Feishu `code=1770003` / `resource deleted` as successful deletion confirmation.
+- In the current service result shape, that should appear as `postDeleteCheck.verifiedDeleted=true`.
+
 ### Browser Selection Priority
 
 | Priority | Rule |
@@ -78,3 +83,23 @@ After bootstrap, set `FEISHU_PLAYWRIGHT_USER_DATA_DIR=.playwright/feishu-automat
 | `FEISHU_WIKI_TREE_MAX_CONCURRENCY` |
 | `FEISHU_CACHE_MAX_ENTRIES` |
 | `FEISHU_CACHE_CLEANUP_INTERVAL_SECONDS` |
+
+## Section Copy / Move
+
+- `copy_section` copies the full section range including the heading block.
+- `move_section` performs copy-then-delete with rollback if source deletion fails.
+- Destination can be selected by `targetIndex` or by `targetSectionHeading` / `targetHeadingPath`.
+- If no target anchor is provided, the copied section is appended to `targetParentBlockId` (or the target document root).
+- Moving a section to a heading inside the same source section is rejected to avoid self-overlap.
+- Any trailing non-heading block under the same parent, including images, still belongs to that section until the next heading.
+- When images are present, transfer uses media reconstruction: download source bytes, then re-upload into the target document. The copied image block gets a new file token.
+- `preview_edit_plan` warns when a section contains images or nested child blocks. Treat that warning as a performance/behavior hint, not as a hard failure.
+- Image reconstruction depends on the active auth context being able to download the source media. A restricted auth mode can still block this path.
+
+## Validating Local Code Changes
+
+When you change the service implementation itself, do not assume an already-running MCP process has picked up the new code.
+
+1. Restart the MCP server before validating through an external client.
+2. Or call the local service layer directly for integration checks.
+3. In validation notes, state whether the evidence came from MCP tool calls, local scripts, or code reading.

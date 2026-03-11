@@ -18,7 +18,10 @@ export function registerGenerateTools(server: McpServer, context: AppContext): v
       documentId: documentIdSchema(),
       parentBlockId: optionalParentBlockIdSchema(),
       index: optionalIndexSchema(),
-      title: z.string().min(1).describe('Section title text.'),
+      title: z
+        .string()
+        .min(1)
+        .describe('Section title text. Supports inline code spans with backticks.'),
       headingLevel: z
         .number()
         .int()
@@ -27,17 +30,21 @@ export function registerGenerateTools(server: McpServer, context: AppContext): v
         .optional()
         .default(2)
         .describe('Heading level for title, within [1, 9].'),
-      paragraphs: z.array(z.string()).optional().default([]).describe('Plain paragraph texts.'),
+      paragraphs: z
+        .array(z.string())
+        .optional()
+        .default([])
+        .describe('Paragraph texts. Supports inline code spans with backticks.'),
       orderedItems: z
         .array(z.string())
         .optional()
         .default([])
-        .describe('Ordered-list item texts.'),
+        .describe('Ordered-list item texts. Supports inline code spans with backticks.'),
       bulletItems: z
         .array(z.string())
         .optional()
         .default([])
-        .describe('Bullet-list item texts.'),
+        .describe('Bullet-list item texts. Supports inline code spans with backticks.'),
       ...chunkedWriteFields({
         resumeDescription: 'Skip the first N generated children, used for checkpoint resume.',
       }),
