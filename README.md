@@ -4,18 +4,129 @@ TypeScript MCP server for Feishu document/wiki automation.
 
 [中文说明](./README.zh-CN.md)
 
-## Quick Start
+## 1. Three Things To Know First
 
-| Step | Action | Command / Value |
-| --- | --- | --- |
-| 1 | Install dependencies | `npm install` |
-| 2 | Prepare env file | `cp .env.example .env` |
-| 3 | Start in default mode (`stdio`) | `npm run dev` |
-| 4 | Start in HTTP mode | `npm run dev:http` |
+1. This is an MCP server, not a web app. You use it from an MCP client.
+2. Keep `MCP_MODE=auto` by default: normal usage still runs through `stdio`, and you only switch to `HTTP` when you explicitly pass `--http`. That keeps day-to-day usage simple and avoids editing `.env` back and forth.
+3. For a beginner, "it works" means you can complete `ping`, `auth_status`, and `get_feishu_document_info` in order, not just start the process.
 
-`npm run dev` and `npm run start` default to `stdio` unless `MCP_MODE` or CLI args override it.
+## 2. Shortest Successful Path (the top-level README only keeps this)
 
-## Required Env
+### 2.1 Prerequisites
+
+- Node.js `>= 20.17.0`
+- A Feishu app `app id` / `app secret`
+- A real Feishu document URL or `docx_id` you can access
+
+### 2.2 Hand Off Detailed Setup And Initialization To The Feishu Doc Workflow
+
+The top-level README only keeps the shortest path. If you explicitly ask Codex to install, initialize, configure, or wire up `feishu-creator`, the upgraded `feishu-creator-doc-workflow` skill now tries to do the long setup work automatically:
+
+- install dependencies
+- prepare `.env`
+- build `dist/`
+- write common MCP client config files
+- only fall back to asking for missing Feishu credentials when those values are truly required
+
+In other words, the long-form setup flow now lives in the skill itself instead of a repo-side playbook.
+
+### 2.3 Install
+
+```bash
+npm install
+cp .env.example .env
+```
+
+### 2.4 Fill The Smallest Possible `.env`
+
+If you only want the quickest first run, start with `tenant` mode:
+
+```dotenv
+FEISHU_APP_ID=cli_xxx
+FEISHU_APP_SECRET=xxx
+FEISHU_AUTH_TYPE=tenant
+```
+
+Everything else can stay at the `.env.example` defaults for now. In practice, keep `MCP_MODE=auto` and avoid changing it to `http` for normal usage.
+
+### 2.5 Keep `MCP_MODE=auto`
+
+This is the lowest-friction setup:
+
+- Keep `MCP_MODE=auto` in `.env`
+- Use `npm run dev` or `npm run start` for normal work; they effectively run as `stdio`
+- Only use an `--http` startup command in the small number of cases that really need it
+
+In this project, `auto` is effectively "let the startup command decide the mode", not "stay in HTTP by default".
+
+### 2.6 Connect It In Your MCP Client (minimal example)
+
+#### `stdio`: recommended for first-time MCP users
+
+Build once:
+
+```bash
+npm run build
+```
+
+Then configure a `stdio` server in your MCP client. Field names vary a bit by client, but the core idea is the same:
+
+```json
+{
+  "mcpServers": {
+    "feishu-creator": {
+      "command": "node",
+      "args": ["/absolute/path/to/feishu-creator/dist/index.js", "--stdio"]
+    }
+  }
+}
+```
+
+Notes:
+
+- `dist/index.js` automatically loads `.env` from the repo root.
+- There is no `/mcp` port in `stdio` mode.
+- Manually running `npm run dev` in a terminal is useful for debugging the server itself, but it does not mean your client is already connected to it.
+- Only switch to `HTTP` temporarily when you need OAuth callback for `user` token acquisition. Do not change your default mode to `http` just for that. See [Advanced usage (English)](./docs/advanced.md) for that path.
+
+### 2.7 First Calls To Make
+
+This order makes debugging much easier:
+
+1. `ping`
+   Input: `{ "message": "hello" }`
+   Purpose: proves the MCP transport is working.
+2. `auth_status`
+   Input: `{}`
+   Purpose: confirms whether you are in `tenant` or `user` mode.
+3. `auth_status`
+   Input: `{ "fetchToken": true }`
+   Purpose: confirms the server can actually fetch a Feishu token.
+4. `get_feishu_document_info`
+   Input: `{ "documentId": "<docx_id_or_url>" }`
+   Purpose: confirms you are not just running the server, but can really access Feishu content.
+
+If the first three succeed but the last one fails, the issue is usually Feishu permission, document id, auth mode, or app capability scope rather than MCP transport.
+
+## 3. When To Use `user` Mode
+
+Use `tenant` to get started quickly. Turn on `user` only when you explicitly need user-context access.
+
+- If you already have tokens: set `FEISHU_USER_ACCESS_TOKEN` or `FEISHU_USER_REFRESH_TOKEN` and keep using `stdio`.
+- If you do not have tokens yet: switch to `HTTP` only temporarily for the OAuth callback flow, then return to `MCP_MODE=auto` + `stdio`.
+
+For the detailed `user` initialization path, rely on the skill flow plus [Advanced usage (English)](./docs/advanced.md).
+
+## 4. Common Beginner Pitfalls
+
+- `stdio` is not "start a local port and point the client at it"; in the default path it does not need a port at all.
+- Do not use `search_feishu_documents` as the first verifier right after create/delete. Prefer `get_feishu_document_info` or `get_feishu_wiki_tree` first because search can lag behind indexing.
+- If you changed the server code, restart the MCP process before testing again. A running process will not hot-reload repo changes automatically.
+- For new wiki pages, prefer `wikiContext.spaceId`. Only use `folderToken` when you intentionally need Drive-folder compatibility.
+
+## 5. Required Env
+
+The `MCP_HTTP_*` variables below are only needed if you intentionally use `HTTP` mode. For the default `stdio` path, you can ignore them at first.
 
 | Variable | Required When | Default | Description |
 | --- | --- | --- | --- |
@@ -26,7 +137,7 @@ TypeScript MCP server for Feishu document/wiki automation.
 | `MCP_HTTP_REQUIRE_AUTH` | HTTP mode | `true` | Require auth header for `/mcp` |
 | `MCP_HTTP_AUTH_TOKEN` | HTTP mode + `MCP_HTTP_REQUIRE_AUTH=true` | - | Bearer token for `/mcp` |
 
-## Common Optional Env
+## 6. Common Optional Env
 
 | Variable | Default | Description |
 | --- | --- | --- |
@@ -43,7 +154,7 @@ TypeScript MCP server for Feishu document/wiki automation.
 | `FEISHU_PLAYWRIGHT_LOGIN_RECOVERY_MODE` | `on_demand` | `on_demand` or `interactive_first` |
 | `FEISHU_PLAYWRIGHT_LOGIN_TIMEOUT_MS` | project config value | Interactive login timeout |
 
-## Smoke Check
+## 7. Smoke Check
 
 | Check | Tool | Example Input |
 | --- | --- | --- |
@@ -52,7 +163,7 @@ TypeScript MCP server for Feishu document/wiki automation.
 | Token fetch path | `auth_status` | `{ "fetchToken": true }` |
 | Real doc read | `get_feishu_document_info` | `{ "documentId": "<docx_id_or_url>" }` |
 
-## Tool Catalog
+## 8. Tool Catalog
 
 ### Auth & Runtime
 
@@ -106,7 +217,7 @@ This server is wiki-first. It does not expose standalone Drive browsing/search t
 | `get_feishu_wiki_tree` | Read wiki node tree |
 | `search_feishu_documents` | Search docs/wiki nodes by keyword |
 
-## Text Update Payload
+## 9. Text Update Payload
 
 For `update_feishu_block_text` and `batch_update_feishu_blocks`:
 
@@ -115,7 +226,7 @@ For `update_feishu_block_text` and `batch_update_feishu_blocks`:
 | Object array | Preferred | `[{ "text": "Hello world" }]` |
 | String array | Backward compatible (auto-normalized) | `["Hello world"]` |
 
-## Inline Code In Rich Text
+## 10. Inline Code In Rich Text
 
 Text fields in `generate_section_blocks`, `generate_rich_text_blocks`, `replace_section_blocks`, `insert_before_heading`, and `replace_section_with_ordered_list` support lightweight inline-code parsing:
 
@@ -123,7 +234,7 @@ Text fields in `generate_section_blocks`, `generate_rich_text_blocks`, `replace_
 - Only inline code spans are parsed; the input is not treated as a full Markdown document.
 - `code` blocks are still written verbatim, so backticks inside them are not reinterpreted as inline styles.
 
-## Markdown Import And Export
+## 11. Markdown Import And Export
 
 The initial Markdown workflow is intentionally lightweight rather than fully lossless.
 
@@ -131,7 +242,7 @@ The initial Markdown workflow is intentionally lightweight rather than fully los
 - Export supports the same block set and also renders common inline styles like bold, italic, strikethrough, inline code, and underline (`<u>...</u>`).
 - Nested lists, tables, attachments, and other advanced Feishu-only blocks are not preserved yet.
 
-## Operational Notes
+## 12. Operational Notes
 
 - `create_feishu_document` is wiki-first in normal usage. Pass `wikiContext.spaceId` for new wiki pages, or `folderToken` only when you intentionally need Drive-folder compatibility.
 - Do not use `search_feishu_documents` as the first verifier for a page you just created or deleted. Prefer `get_feishu_document_info` or `get_feishu_wiki_tree` first, then search later if needed.
@@ -141,7 +252,7 @@ The initial Markdown workflow is intentionally lightweight rather than fully los
 - `preview_edit_plan` is the safest way to confirm section boundaries before a cross-document copy or move, especially when the section may include images or nested child blocks.
 - If you just changed the server code, restart the MCP process before validating behavior from an external client. A long-running process will not pick up repo edits automatically.
 
-## Advanced Docs
+## 13. Advanced Docs
 
 - [Advanced usage (English)](./docs/advanced.md)
 - [高级说明（中文）](./docs/advanced.zh-CN.md)
