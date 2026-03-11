@@ -11,6 +11,48 @@ function maskToken(token: string): string {
 
 const DEFAULT_ENV_FILE = ".env";
 
+function getNetworkEnvSummary() {
+  return {
+    hasHttpProxy: Boolean(process.env.HTTP_PROXY || process.env.http_proxy),
+    hasHttpsProxy: Boolean(process.env.HTTPS_PROXY || process.env.https_proxy),
+    hasAllProxy: Boolean(process.env.ALL_PROXY || process.env.all_proxy),
+    hasNoProxy: Boolean(process.env.NO_PROXY || process.env.no_proxy),
+    nodeUseEnvProxy: process.env.NODE_USE_ENV_PROXY ?? null,
+    hasNodeExtraCaCerts: Boolean(process.env.NODE_EXTRA_CA_CERTS),
+    hasSslCertFile: Boolean(process.env.SSL_CERT_FILE),
+    hasSslCertDir: Boolean(process.env.SSL_CERT_DIR),
+  };
+}
+
+function isLikelyTransportError(message: string): boolean {
+  const lower = message.toLowerCase();
+  return [
+    "fetch failed",
+    "network",
+    "timeout",
+    "socket hang up",
+    "econnreset",
+    "etimedout",
+    "eai_again",
+  ].some((keyword) => lower.includes(keyword));
+}
+
+function buildTokenFetchHint(errorMessage: string): string | undefined {
+  if (!isLikelyTransportError(errorMessage)) {
+    return undefined;
+  }
+  const env = getNetworkEnvSummary();
+  const hasProxy =
+    env.hasHttpProxy || env.hasHttpsProxy || env.hasAllProxy;
+  if (!hasProxy) {
+    return "No proxy env was detected inside the MCP process. If your network requires a proxy, pass HTTP_PROXY/HTTPS_PROXY/ALL_PROXY/NO_PROXY into the MCP child-process env and set NODE_USE_ENV_PROXY=1.";
+  }
+  if (env.nodeUseEnvProxy !== "1") {
+    return "Proxy env is present, but NODE_USE_ENV_PROXY is not set to 1. For Node fetch-based requests, enable NODE_USE_ENV_PROXY=1 in the MCP child-process env.";
+  }
+  return "Proxy env is present in the MCP process. Check proxy reachability, credentials, and any custom CA settings such as NODE_EXTRA_CA_CERTS or SSL_CERT_FILE.";
+}
+
 export function registerAuthTools(server: McpServer, context: AppContext): void {
   server.tool(
     "ping",
@@ -41,12 +83,16 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
           ...status,
           tokenFetched: true,
           tokenPreview: maskToken(token),
+          networkEnv: getNetworkEnvSummary(),
         });
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         return jsonToolResult({
           ...status,
           tokenFetched: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage,
+          networkEnv: getNetworkEnvSummary(),
+          hint: buildTokenFetchHint(errorMessage),
         });
       }
     },

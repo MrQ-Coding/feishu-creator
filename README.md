@@ -95,9 +95,11 @@ Then configure a `stdio` server in your MCP client. Field names vary a bit by cl
 Notes:
 
 - `dist/index.js` automatically loads `.env` from the repo root.
+- If your MCP client does not inherit proxy settings into child processes, add `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `NO_PROXY`, and `NODE_USE_ENV_PROXY=1` under the server `env` block.
 - There is no `/mcp` port in `stdio` mode.
 - Manually running `npm run dev` in a terminal is useful for debugging the server itself, but it does not mean your client is already connected to it.
 - Only switch to `HTTP` temporarily when you need OAuth callback for `user` token acquisition. Do not change your default mode to `http` just for that. See [Advanced usage (English)](./docs/advanced.md) for that path.
+- On Windows PowerShell, avoid piping inline non-ASCII JSON directly into `node` for local smoke tests. Prefer real MCP client calls, or use `node scripts/callTool.mjs --tool <name> --args-file <utf8-json>`.
 
 ### 2.8 First Calls To Make
 
@@ -117,6 +119,18 @@ This order makes debugging much easier:
    Purpose: confirms you are not just running the server, but can really access Feishu content.
 
 If the first three succeed but the last one fails, the issue is usually Feishu permission, document id, auth mode, or app capability scope rather than MCP transport.
+
+For local tool smoke tests, especially on Windows with Chinese input, you can also use:
+
+```bash
+node scripts/callTool.mjs --tool ping --args-json '{"message":"测试"}'
+```
+
+Or put UTF-8 JSON in a file and call:
+
+```bash
+node scripts/callTool.mjs --tool create_feishu_document --args-file ./request.json
+```
 
 ## 3. When To Use `user` Mode
 

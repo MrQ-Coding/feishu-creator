@@ -95,9 +95,11 @@ npm run build
 说明：
 
 - `dist/index.js` 会按项目路径自动读取仓库根目录下的 `.env`。
+- 如果你的 MCP 客户端不会把代理环境变量透传给子进程，请在 server `env` 里补上 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`，并设置 `NODE_USE_ENV_PROXY=1`。
 - `stdio` 模式没有 `/mcp` 端口，不需要你自己再开一个 HTTP 服务。
 - 如果你手动在终端里运行 `npm run dev`，那是在调试服务本身，不等于客户端已经接上它。
 - 如果你只是为了 OAuth 回调拿 `user` token，才临时切到 `HTTP`；平时不要为了这个把默认模式改成 `http`。具体配置见 [高级说明（中文）](./docs/advanced.zh-CN.md)。
+- 在 Windows PowerShell 里，本地冒烟测试不要把带中文的内联 JSON 直接管道给 `node`。更稳的做法是走真实 MCP 客户端调用，或者用 `node scripts/callTool.mjs --tool <name> --args-file <utf8-json>`。
 
 ### 7. 第一次建议这样调用
 
@@ -117,6 +119,18 @@ npm run build
    作用：确认你不是只把服务启动了，而是真的能访问飞书文档。
 
 如果前 3 步都成功，但第 4 步失败，通常就不是 MCP 问题，而是飞书权限、文档 ID、鉴权模式或应用能力范围的问题。
+
+如果你要做本地工具冒烟，尤其是 Windows 上带中文参数时，也可以直接用：
+
+```bash
+node scripts/callTool.mjs --tool ping --args-json '{"message":"测试"}'
+```
+
+或者先把 UTF-8 JSON 写进文件，再调用：
+
+```bash
+node scripts/callTool.mjs --tool create_feishu_document --args-file ./request.json
+```
 
 ## 三、什么时候用 `user` 模式
 

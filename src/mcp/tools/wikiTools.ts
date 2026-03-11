@@ -55,7 +55,7 @@ export function registerWikiTools(server: McpServer, context: AppContext): void 
 
   server.tool(
     "list_feishu_wiki_spaces",
-    "List Feishu wiki spaces (knowledge bases) visible to current auth identity.",
+    "List Feishu wiki spaces (knowledge bases) visible to current auth identity. When reporting results back, use the returned space name verbatim instead of adding prefixes or paraphrases.",
     {
       pageSize: z
         .number()
@@ -75,6 +75,7 @@ export function registerWikiTools(server: McpServer, context: AppContext): void 
           spaces: items.map((item) => ({
             space_id: item.space_id,
             name: item.name,
+            name_verbatim: item.name,
             space_type: item.space_type,
             description: item.description,
           })),
