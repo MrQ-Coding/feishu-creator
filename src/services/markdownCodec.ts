@@ -8,11 +8,24 @@ import {
 } from './documentEdit/richTextBlocks.js';
 
 interface ParsedMarkdownBlock {
-  type: 'heading' | 'text' | 'ordered' | 'bullet' | 'quote' | 'code';
+  type: 'heading' | 'text' | 'ordered' | 'bullet' | 'quote' | 'code' | 'table';
   text: string;
   headingLevel?: number;
   codeFence?: string;
   codeLanguage?: string;
+  children?: ParsedMarkdownBlock[];
+  tableRows?: string[][];
+}
+
+export interface NestedFeishuBlock {
+  block: Record<string, unknown>;
+  children?: NestedFeishuBlock[];
+  tableRows?: string[][];
+}
+
+export interface NestedMarkdownParseResult {
+  nestedChildren: NestedFeishuBlock[];
+  stats: MarkdownParseResult['stats'];
 }
 
 export interface MarkdownParseResult {
@@ -25,6 +38,7 @@ export interface MarkdownParseResult {
     bulletCount: number;
     quoteCount: number;
     codeCount: number;
+    tableCount: number;
   };
 }
 
@@ -36,7 +50,19 @@ export interface MarkdownRenderResult {
   };
 }
 
+export interface MarkdownRenderOptions {
+  rootBlockIds?: string[];
+}
+
 export function parseMarkdownToFeishuBlocks(markdown: string): MarkdownParseResult {
+  const nested = parseMarkdownToNestedBlocks(markdown);
+  return {
+    children: flattenNestedBlocks(nested.nestedChildren),
+    stats: nested.stats,
+  };
+}
+
+export function parseMarkdownToNestedBlocks(markdown: string): NestedMarkdownParseResult {
   const normalized = normalizeMarkdown(markdown);
   const lines = normalized.split('\n');
   const parsedBlocks: ParsedMarkdownBlock[] = [];
@@ -75,17 +101,46 @@ export function parseMarkdownToFeishuBlocks(markdown: string): MarkdownParseResu
       continue;
     }
 
+    // Table detection: line starts with | and has at least one | separator.
+    if (isTableLine(line)) {
+      const table = collectTableBlock(lines, index);
+      if (table) {
+        parsedBlocks.push(table.block);
+        index = table.nextIndex;
+        continue;
+      }
+    }
+
     if (isOrderedListLine(line)) {
-      const block = collectListBlock(lines, index, 'ordered');
+      const block = collectNestedListBlock(lines, index, 'ordered');
       parsedBlocks.push(...block.blocks);
       index = block.nextIndex;
       continue;
     }
 
     if (isBulletListLine(line)) {
-      const block = collectListBlock(lines, index, 'bullet');
+      const block = collectNestedListBlock(lines, index, 'bullet');
       parsedBlocks.push(...block.blocks);
       index = block.nextIndex;
+      continue;
+    }
+
+    // Standalone indented list items (not preceded by a top-level list).
+    if (isIndentedListLine(line)) {
+      const subOrderedPattern = /^[ \t]+\d+[.)][ \t]+(.+?)\s*$/;
+      const subBulletPattern = /^[ \t]+[-*+][ \t]+(.+?)\s*$/;
+      while (index < lines.length) {
+        const subLine = lines[index] ?? '';
+        const subOrdered = subLine.match(subOrderedPattern);
+        const subBullet = subLine.match(subBulletPattern);
+        const subMatch = subOrdered || subBullet;
+        if (!subMatch) break;
+        parsedBlocks.push({
+          type: subOrdered ? 'ordered' : 'bullet',
+          text: subMatch[1].trim(),
+        });
+        index += 1;
+      }
       continue;
     }
 
@@ -95,36 +150,166 @@ export function parseMarkdownToFeishuBlocks(markdown: string): MarkdownParseResu
   }
 
   return {
-    children: parsedBlocks.map(convertParsedBlockToFeishuBlock),
+    nestedChildren: parsedBlocks.map(convertParsedBlockToNested),
     stats: summarizeParsedBlocks(parsedBlocks),
   };
 }
 
+function flattenNestedBlocks(nested: NestedFeishuBlock[]): Array<Record<string, unknown>> {
+  const result: Array<Record<string, unknown>> = [];
+  for (const item of nested) {
+    result.push(item.block);
+    if (item.children && item.children.length > 0) {
+      result.push(...flattenNestedBlocks(item.children));
+    }
+  }
+  return result;
+}
+
+function convertParsedBlockToNested(block: ParsedMarkdownBlock): NestedFeishuBlock {
+  const feishuBlock = convertParsedBlockToFeishuBlock(block);
+  const nested: NestedFeishuBlock = { block: feishuBlock };
+  if (block.children && block.children.length > 0) {
+    nested.children = block.children.map(convertParsedBlockToNested);
+  }
+  if (block.tableRows) {
+    nested.tableRows = block.tableRows;
+  }
+  return nested;
+}
+
 export function renderFeishuBlocksToMarkdown(
   blocks: Array<Record<string, unknown>>,
+  options: MarkdownRenderOptions = {},
 ): MarkdownRenderResult {
   const chunks: string[] = [];
-  let exportedBlocks = 0;
-  let skippedBlocks = 0;
+  const blockMap = buildBlockMap(blocks);
+  const stats: MarkdownRenderResult['stats'] = {
+    exportedBlocks: 0,
+    skippedBlocks: 0,
+  };
 
-  for (const block of blocks) {
-    const rendered = renderSingleBlock(block);
-    if (!rendered) {
-      skippedBlocks += 1;
-      continue;
+  if (Array.isArray(options.rootBlockIds) && options.rootBlockIds.length > 0) {
+    const visited = new Set<string>();
+    for (const blockId of options.rootBlockIds) {
+      const rendered = renderBlockFromId(
+        blockId,
+        {
+          blockMap,
+          visited,
+          stats,
+        },
+        0,
+      );
+      if (rendered) {
+        chunks.push(rendered);
+      }
     }
-    exportedBlocks += 1;
-    chunks.push(rendered);
+  } else {
+    for (const block of blocks) {
+      const rendered = renderSingleBlock(block, blockMap, 0);
+      if (!rendered) {
+        stats.skippedBlocks += 1;
+        continue;
+      }
+      stats.exportedBlocks += 1;
+      chunks.push(rendered);
+    }
   }
 
   const markdown = chunks.join('\n\n').replace(/\n{3,}/g, '\n\n').trim();
   return {
     markdown,
-    stats: {
-      exportedBlocks,
-      skippedBlocks,
-    },
+    stats,
   };
+}
+
+interface RenderTraversalContext {
+  blockMap: Map<string, Record<string, unknown>>;
+  visited: Set<string>;
+  stats: MarkdownRenderResult['stats'];
+}
+
+function renderBlockFromId(
+  blockId: string,
+  context: RenderTraversalContext,
+  listDepth: number,
+): string | null {
+  if (context.visited.has(blockId)) {
+    return null;
+  }
+  const block = context.blockMap.get(blockId);
+  if (!block) {
+    return null;
+  }
+  context.visited.add(blockId);
+  return renderBlockRecursive(block, context, listDepth);
+}
+
+function renderBlockRecursive(
+  block: Record<string, unknown>,
+  context: RenderTraversalContext,
+  listDepth: number,
+): string | null {
+  const blockType = extractBlockType(block);
+  const rendered = renderSingleBlock(block, context.blockMap, listDepth);
+  if (rendered) {
+    context.stats.exportedBlocks += 1;
+  } else {
+    context.stats.skippedBlocks += 1;
+  }
+
+  if (blockType === 12 || blockType === 13) {
+    const lines: string[] = [];
+    if (rendered) {
+      lines.push(rendered);
+    }
+    for (const childId of extractChildIds(block)) {
+      const child = context.blockMap.get(childId);
+      if (!child) continue;
+      const childType = extractBlockType(child);
+      const childRendered = renderBlockFromId(childId, context, listDepth + 1);
+      if (!childRendered) continue;
+      if (childType === 12 || childType === 13) {
+        lines.push(childRendered);
+      } else {
+        const indent = '  '.repeat(listDepth + 1);
+        lines.push(
+          childRendered
+            .split('\n')
+            .map((line) => `${indent}${line}`)
+            .join('\n'),
+        );
+      }
+    }
+    return lines.length > 0 ? lines.join('\n') : null;
+  }
+
+  if (!rendered) {
+    const childChunks: string[] = [];
+    for (const childId of extractChildIds(block)) {
+      const childRendered = renderBlockFromId(childId, context, listDepth);
+      if (childRendered) {
+        childChunks.push(childRendered);
+      }
+    }
+    return childChunks.length > 0 ? childChunks.join('\n\n') : null;
+  }
+
+  return rendered;
+}
+
+function buildBlockMap(
+  blocks: Array<Record<string, unknown>>,
+): Map<string, Record<string, unknown>> {
+  const map = new Map<string, Record<string, unknown>>();
+  for (const block of blocks) {
+    const id = block.block_id;
+    if (typeof id === 'string') {
+      map.set(id, block);
+    }
+  }
+  return map;
 }
 
 function normalizeMarkdown(markdown: string): string {
@@ -132,41 +317,39 @@ function normalizeMarkdown(markdown: string): string {
 }
 
 function summarizeParsedBlocks(blocks: ParsedMarkdownBlock[]): MarkdownParseResult['stats'] {
-  return blocks.reduce<MarkdownParseResult['stats']>(
-    (stats, block) => {
-      stats.totalBlocks += 1;
-      switch (block.type) {
-        case 'heading':
-          stats.headingCount += 1;
-          break;
-        case 'text':
-          stats.paragraphCount += 1;
-          break;
-        case 'ordered':
-          stats.orderedCount += 1;
-          break;
-        case 'bullet':
-          stats.bulletCount += 1;
-          break;
-        case 'quote':
-          stats.quoteCount += 1;
-          break;
-        case 'code':
-          stats.codeCount += 1;
-          break;
+  const stats: MarkdownParseResult['stats'] = {
+    totalBlocks: 0,
+    headingCount: 0,
+    paragraphCount: 0,
+    orderedCount: 0,
+    bulletCount: 0,
+    quoteCount: 0,
+    codeCount: 0,
+    tableCount: 0,
+  };
+
+  function countRecursive(block: ParsedMarkdownBlock): void {
+    stats.totalBlocks += 1;
+    switch (block.type) {
+      case 'heading': stats.headingCount += 1; break;
+      case 'text': stats.paragraphCount += 1; break;
+      case 'ordered': stats.orderedCount += 1; break;
+      case 'bullet': stats.bulletCount += 1; break;
+      case 'quote': stats.quoteCount += 1; break;
+      case 'code': stats.codeCount += 1; break;
+      case 'table': stats.tableCount += 1; break;
+    }
+    if (block.children) {
+      for (const child of block.children) {
+        countRecursive(child);
       }
-      return stats;
-    },
-    {
-      totalBlocks: 0,
-      headingCount: 0,
-      paragraphCount: 0,
-      orderedCount: 0,
-      bulletCount: 0,
-      quoteCount: 0,
-      codeCount: 0,
-    },
-  );
+    }
+  }
+
+  for (const block of blocks) {
+    countRecursive(block);
+  }
+  return stats;
 }
 
 function convertParsedBlockToFeishuBlock(
@@ -185,6 +368,20 @@ function convertParsedBlockToFeishuBlock(
       return buildQuoteBlock(block.text);
     case 'code':
       return buildCodeBlock(block.text);
+    case 'table': {
+      const rows = block.tableRows ?? [];
+      const rowSize = rows.length;
+      const colSize = rowSize > 0 ? rows[0].length : 0;
+      return {
+        block_type: 31,
+        table: {
+          property: {
+            row_size: rowSize,
+            column_size: colSize,
+          },
+        },
+      };
+    }
   }
 }
 
@@ -282,29 +479,173 @@ function isBulletListLine(line: string): boolean {
   return /^[-*+][ \t]+/.test(line);
 }
 
-function collectListBlock(
+function isIndentedListLine(line: string): boolean {
+  return /^[ \t]+[-*+\d]/.test(line);
+}
+
+function getIndentLevel(line: string): number {
+  const match = line.match(/^([ \t]*)/);
+  if (!match) return 0;
+  const indent = match[1];
+  let level = 0;
+  for (const ch of indent) {
+    level += ch === '\t' ? 4 : 1;
+  }
+  return Math.floor(level / 2); // 2 spaces = 1 level
+}
+
+function collectNestedListBlock(
   lines: string[],
   startIndex: number,
   type: 'ordered' | 'bullet',
 ): { blocks: ParsedMarkdownBlock[]; nextIndex: number } {
-  const blocks: ParsedMarkdownBlock[] = [];
-  let index = startIndex;
-  const pattern =
+  const topPattern =
     type === 'ordered' ? /^\d+[.)][ \t]+(.+?)\s*$/ : /^[-*+][ \t]+(.+?)\s*$/;
+
+  // Collect all contiguous list lines (top-level + indented) with their indent levels.
+  interface RawListItem {
+    text: string;
+    type: 'ordered' | 'bullet';
+    indent: number;
+  }
+  const items: RawListItem[] = [];
+  let index = startIndex;
 
   while (index < lines.length) {
     const line = lines[index] ?? '';
-    const match = line.match(pattern);
-    if (!match) break;
-    blocks.push({
-      type,
-      text: match[1].trim(),
-    });
+    if (line.trim().length === 0) break;
+
+    // Top-level item
+    const topMatch = line.match(topPattern);
+    if (topMatch) {
+      items.push({ text: topMatch[1].trim(), type, indent: 0 });
+      index += 1;
+      continue;
+    }
+
+    // Indented sub-item
+    const subOrdered = line.match(/^([ \t]+)\d+[.)][ \t]+(.+?)\s*$/);
+    const subBullet = line.match(/^([ \t]+)[-*+][ \t]+(.+?)\s*$/);
+    if (subOrdered) {
+      items.push({
+        text: subOrdered[2].trim(),
+        type: 'ordered',
+        indent: getIndentLevel(line),
+      });
+      index += 1;
+      continue;
+    }
+    if (subBullet) {
+      items.push({
+        text: subBullet[2].trim(),
+        type: 'bullet',
+        indent: getIndentLevel(line),
+      });
+      index += 1;
+      continue;
+    }
+    break;
+  }
+
+  // Build tree from flat items with indent levels.
+  function buildTree(flatItems: RawListItem[], baseIndent: number): ParsedMarkdownBlock[] {
+    const result: ParsedMarkdownBlock[] = [];
+    let i = 0;
+    while (i < flatItems.length) {
+      const item = flatItems[i];
+      if (item.indent < baseIndent) break;
+      if (item.indent === baseIndent) {
+        const block: ParsedMarkdownBlock = {
+          type: item.type,
+          text: item.text,
+        };
+        // Collect children (items with higher indent immediately following)
+        const childItems: RawListItem[] = [];
+        let j = i + 1;
+        while (j < flatItems.length && flatItems[j].indent > baseIndent) {
+          childItems.push(flatItems[j]);
+          j += 1;
+        }
+        if (childItems.length > 0) {
+          block.children = buildTree(childItems, baseIndent + 1);
+        }
+        result.push(block);
+        i = j;
+      } else {
+        // Item has higher indent than expected, treat as child of previous
+        // This handles cases with inconsistent indentation
+        const block: ParsedMarkdownBlock = {
+          type: item.type,
+          text: item.text,
+        };
+        result.push(block);
+        i += 1;
+      }
+    }
+    return result;
+  }
+
+  const blocks = buildTree(items, 0);
+  return { blocks, nextIndex: index };
+}
+
+function isTableLine(line: string): boolean {
+  return /^\|/.test(line.trim()) && line.trim().includes('|');
+}
+
+function isTableSeparatorLine(line: string): boolean {
+  return /^\|[\s:|-]+\|\s*$/.test(line.trim());
+}
+
+function parseTableRow(line: string): string[] {
+  const trimmed = line.trim();
+  // Remove leading and trailing |
+  const inner = trimmed.startsWith('|') ? trimmed.slice(1) : trimmed;
+  const cleaned = inner.endsWith('|') ? inner.slice(0, -1) : inner;
+  return cleaned.split('|').map(cell => cell.trim());
+}
+
+function collectTableBlock(
+  lines: string[],
+  startIndex: number,
+): { block: ParsedMarkdownBlock; nextIndex: number } | null {
+  let index = startIndex;
+
+  // First line is the header row
+  const headerLine = lines[index] ?? '';
+  if (!isTableLine(headerLine)) return null;
+  const headers = parseTableRow(headerLine);
+  index += 1;
+
+  // Second line must be the separator
+  if (index >= lines.length) return null;
+  const separatorLine = lines[index] ?? '';
+  if (!isTableSeparatorLine(separatorLine)) return null;
+  index += 1;
+
+  // Collect body rows
+  const rows: string[][] = [headers];
+  while (index < lines.length) {
+    const line = lines[index] ?? '';
+    if (!isTableLine(line) || isTableSeparatorLine(line)) break;
+    if (line.trim().length === 0) break;
+    rows.push(parseTableRow(line));
     index += 1;
   }
 
+  // Normalize column count
+  const colCount = headers.length;
+  for (const row of rows) {
+    while (row.length < colCount) row.push('');
+    if (row.length > colCount) row.length = colCount;
+  }
+
   return {
-    blocks,
+    block: {
+      type: 'table',
+      text: '',
+      tableRows: rows,
+    },
     nextIndex: index,
   };
 }
@@ -321,7 +662,13 @@ function collectParagraphBlock(
     if (line.trim().length === 0) break;
     if (parseFenceStart(line)) break;
     if (/^(#{1,9})[ \t]+/.test(line)) break;
-    if (isQuoteLine(line) || isOrderedListLine(line) || isBulletListLine(line)) break;
+    if (
+      isQuoteLine(line) ||
+      isOrderedListLine(line) ||
+      isBulletListLine(line) ||
+      isIndentedListLine(line) ||
+      isTableLine(line)
+    ) break;
     content.push(line.trim());
     index += 1;
   }
@@ -335,8 +682,13 @@ function collectParagraphBlock(
   };
 }
 
-function renderSingleBlock(block: Record<string, unknown>): string | null {
+function renderSingleBlock(
+  block: Record<string, unknown>,
+  blockMap?: Map<string, Record<string, unknown>>,
+  listDepth = 0,
+): string | null {
   const blockType = extractBlockType(block);
+  const listIndent = '  '.repeat(Math.max(0, listDepth));
   switch (blockType) {
     case 2:
       return renderInlineElements(extractElements(block, 'text'));
@@ -354,9 +706,9 @@ function renderSingleBlock(block: Record<string, unknown>): string | null {
       return `${'#'.repeat(level)} ${text}`.trim();
     }
     case 12:
-      return `- ${renderInlineElements(extractElements(block, 'bullet'))}`.trimEnd();
+      return `${listIndent}- ${renderInlineElements(extractElements(block, 'bullet'))}`.trimEnd();
     case 13:
-      return `1. ${renderInlineElements(extractElements(block, 'ordered'))}`.trimEnd();
+      return `${listIndent}1. ${renderInlineElements(extractElements(block, 'ordered'))}`.trimEnd();
     case 14: {
       const codeText = renderPlainText(extractElements(block, 'code'));
       return renderCodeFence(codeText);
@@ -368,6 +720,8 @@ function renderSingleBlock(block: Record<string, unknown>): string | null {
         .map((line) => `> ${line}`)
         .join('\n');
     }
+    case 31:
+      return renderTableBlock(block, blockMap);
     default:
       return null;
   }
@@ -406,6 +760,16 @@ function renderInlineElements(elements: Array<Record<string, unknown>>): string 
         typeof textRunRecord.text_element_style === 'object'
           ? (textRunRecord.text_element_style as Record<string, unknown>)
           : {};
+      // Check for link
+      const link = style.link;
+      if (link && typeof link === 'object') {
+        const linkRecord = link as Record<string, unknown>;
+        const url = typeof linkRecord.url === 'string' ? linkRecord.url : '';
+        if (url) {
+          const styledContent = applyMarkdownStyles(content, { ...style, link: undefined });
+          return `[${styledContent}](${url})`;
+        }
+      }
       return applyMarkdownStyles(content, style);
     })
     .join('');
@@ -484,4 +848,94 @@ function escapeMarkdownText(text: string): string {
 function renderCodeFence(text: string): string {
   const fence = '`'.repeat(Math.max(3, longestBacktickRun(text) + 1));
   return `${fence}\n${text}\n${fence}`;
+}
+
+function renderTableBlock(
+  block: Record<string, unknown>,
+  blockMap?: Map<string, Record<string, unknown>>,
+): string | null {
+  const table = block.table;
+  if (!table || typeof table !== 'object') return null;
+  const tableRecord = table as Record<string, unknown>;
+  const property = tableRecord.property as Record<string, unknown> | undefined;
+  if (!property) return null;
+
+  const rowSize = typeof property.row_size === 'number' ? property.row_size : 0;
+  const colSize = typeof property.column_size === 'number' ? property.column_size : 0;
+  if (rowSize === 0 || colSize === 0) return null;
+
+  // Cells are block IDs listed row by row.
+  const cellIds = Array.isArray(tableRecord.cells)
+    ? (tableRecord.cells as string[])
+    : [];
+
+  const getCellText = (cellId: string): string => {
+    if (!blockMap) return '';
+    const cellBlock = blockMap.get(cellId);
+    if (!cellBlock) return '';
+    // Cell block may contain children. Try to extract text from it directly.
+    // Cell blocks are container blocks (block_type 1 = page) with children.
+    // Look for text content in common text-bearing children.
+    const children = cellBlock.children as string[] | undefined;
+    if (children && Array.isArray(children) && children.length > 0) {
+      const parts: string[] = [];
+      for (const childId of children) {
+        const childBlock = blockMap.get(childId);
+        if (!childBlock) continue;
+        const childType = extractBlockType(childBlock);
+        if (childType === 2) {
+          parts.push(renderPlainText(extractElements(childBlock, 'text')));
+        } else if (childType && childType >= 3 && childType <= 11) {
+          const level = childType - 2;
+          parts.push(renderPlainText(extractElements(childBlock, `heading${level}`)));
+        } else if (childType === 12) {
+          parts.push(renderPlainText(extractElements(childBlock, 'bullet')));
+        } else if (childType === 13) {
+          parts.push(renderPlainText(extractElements(childBlock, 'ordered')));
+        }
+      }
+      return parts.join(' ').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+    }
+    // Fallback: try to read text directly from the cell block itself.
+    if (extractBlockType(cellBlock) === 2) {
+      return renderPlainText(extractElements(cellBlock, 'text'))
+        .replace(/\|/g, '\\|')
+        .replace(/\n/g, ' ');
+    }
+    return '';
+  };
+
+  const rows: string[][] = [];
+  for (let r = 0; r < rowSize; r++) {
+    const row: string[] = [];
+    for (let c = 0; c < colSize; c++) {
+      const idx = r * colSize + c;
+      const cellId = cellIds[idx];
+      row.push(cellId ? getCellText(cellId) : '');
+    }
+    rows.push(row);
+  }
+
+  if (rows.length === 0) return null;
+
+  const lines: string[] = [];
+  // Header row
+  const header = rows[0];
+  lines.push(`| ${header.join(' | ')} |`);
+  // Separator
+  lines.push(`| ${header.map(() => '---').join(' | ')} |`);
+  // Body rows
+  for (let r = 1; r < rows.length; r++) {
+    lines.push(`| ${rows[r].join(' | ')} |`);
+  }
+
+  return lines.join('\n');
+}
+
+function extractChildIds(block: Record<string, unknown>): string[] {
+  const children = block.children;
+  if (!Array.isArray(children)) {
+    return [];
+  }
+  return children.filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
