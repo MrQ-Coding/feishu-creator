@@ -14,6 +14,7 @@
   "scripts": {
     "build": "tsc",
     "type-check": "tsc --noEmit",
+    "skills:sync": "node scripts/syncSkills.mjs",
     "call:tool": "node scripts/callTool.mjs",
     "profile:bootstrap": "tsx scripts/bootstrapPlaywrightProfile.ts",
     "dev": "tsx watch src/index.ts",
