@@ -79,6 +79,10 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(180000),
+  FEISHU_GRAPHVIZ_DOT_PATH: z.string().optional(),
+  FEISHU_PLANTUML_COMMAND: z.string().optional(),
+  FEISHU_PLANTUML_JAR_PATH: z.string().optional(),
+  FEISHU_JAVA_PATH: z.string().optional(),
   FEISHU_TOKEN_REFRESH_BEFORE_SECONDS: z.coerce
     .number()
     .int()
@@ -171,6 +175,10 @@ export interface AppConfig {
     playwrightActionTimeoutMs: number;
     playwrightLoginRecoveryMode: "on_demand" | "interactive_first";
     playwrightLoginTimeoutMs: number;
+    graphvizDotPath?: string;
+    plantumlCommand?: string;
+    plantumlJarPath?: string;
+    javaPath?: string;
     refreshBeforeSeconds: number;
     oauthStateTtlSeconds: number;
     maxConcurrency: number;
@@ -216,6 +224,10 @@ export function getConfig(): AppConfig {
       playwrightActionTimeoutMs: env.FEISHU_PLAYWRIGHT_ACTION_TIMEOUT_MS,
       playwrightLoginRecoveryMode: env.FEISHU_PLAYWRIGHT_LOGIN_RECOVERY_MODE,
       playwrightLoginTimeoutMs: env.FEISHU_PLAYWRIGHT_LOGIN_TIMEOUT_MS,
+      graphvizDotPath: resolveOptionalPathLikeValue(env.FEISHU_GRAPHVIZ_DOT_PATH),
+      plantumlCommand: resolveOptionalPathLikeValue(env.FEISHU_PLANTUML_COMMAND),
+      plantumlJarPath: resolveOptionalPathLikeValue(env.FEISHU_PLANTUML_JAR_PATH),
+      javaPath: resolveOptionalPathLikeValue(env.FEISHU_JAVA_PATH),
       refreshBeforeSeconds: env.FEISHU_TOKEN_REFRESH_BEFORE_SECONDS,
       oauthStateTtlSeconds: env.FEISHU_OAUTH_STATE_TTL_SECONDS,
       maxConcurrency: env.FEISHU_MAX_CONCURRENCY,
@@ -234,4 +246,15 @@ export function getConfig(): AppConfig {
 
 function resolveProjectPath(input: string): string {
   return path.isAbsolute(input) ? input : path.resolve(projectRoot, input);
+}
+
+function resolveOptionalPathLikeValue(input?: string): string | undefined {
+  const trimmed = input?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  if (path.isAbsolute(trimmed) || trimmed.startsWith(".") || /[\\/]/.test(trimmed)) {
+    return resolveProjectPath(trimmed);
+  }
+  return trimmed;
 }

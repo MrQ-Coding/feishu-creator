@@ -1,12 +1,12 @@
-import { extractDocumentId } from '../feishu/document.js';
-import type { DocumentBlockService } from './documentBlockService.js';
-import type { DocumentEditService } from './documentEditService.js';
+import { extractDocumentId } from '../../feishu/document.js';
+import type { DocumentBlockService } from '../document/index.js';
+import type { DocumentEditService } from '../documentEdit/index.js';
 import {
   parseMarkdownToNestedBlocks,
   renderFeishuBlocksToMarkdown,
-} from './markdownCodec.js';
-import type { NestedFeishuBlock } from './markdownCodec.js';
-import { buildTextBlock } from './documentEdit/richTextBlocks.js';
+} from './codec.js';
+import type { NestedFeishuBlock } from './codec.js';
+import { buildTextBlock } from '../documentEdit/richTextBlocks.js';
 
 export interface ImportMarkdownInput {
   documentId: string;

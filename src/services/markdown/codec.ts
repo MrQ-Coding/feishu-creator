@@ -5,7 +5,7 @@ import {
   buildOrderedBlock,
   buildQuoteBlock,
   buildTextBlock,
-} from './documentEdit/richTextBlocks.js';
+} from '../documentEdit/richTextBlocks.js';
 
 interface ParsedMarkdownBlock {
   type: 'heading' | 'text' | 'ordered' | 'bullet' | 'quote' | 'code' | 'table';

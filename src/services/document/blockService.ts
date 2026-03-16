@@ -1,7 +1,7 @@
-import type { AppConfig } from "../config.js";
-import type { FeishuClient } from "../feishu/client.js";
-import { extractDocumentId } from "../feishu/document.js";
-import { TtlCache } from "../utils/ttlCache.js";
+import type { AppConfig } from "../../config.js";
+import type { FeishuClient } from "../../feishu/client.js";
+import { extractDocumentId } from "../../feishu/document.js";
+import { TtlCache } from "../../utils/ttlCache.js";
 
 interface DocumentBlockListResponse {
   items?: Array<Record<string, unknown>>;

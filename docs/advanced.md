@@ -84,6 +84,12 @@ After bootstrap, set `FEISHU_PLAYWRIGHT_USER_DATA_DIR=.playwright/feishu-automat
 | `FEISHU_CACHE_MAX_ENTRIES` |
 | `FEISHU_CACHE_CLEANUP_INTERVAL_SECONDS` |
 
+## Markdown Table Boundary
+
+- Basic table support now exists in two paths: dedicated table MCP tools for create/read/replace-cell/replace-table, and the Markdown workflow for import/export scenarios.
+- Treat that path as useful but not lossless. Formatting details and Feishu-specific table features are not guaranteed to round-trip cleanly.
+- The dedicated table surface is intentionally small for now: no row-level or column-level structural edits, merge/unmerge operations, or rich table styling tools are exposed yet.
+
 ## Section Copy / Move
 
 - `copy_section` copies the full section range including the heading block.
@@ -93,6 +99,7 @@ After bootstrap, set `FEISHU_PLAYWRIGHT_USER_DATA_DIR=.playwright/feishu-automat
 - Moving a section to a heading inside the same source section is rejected to avoid self-overlap.
 - Any trailing non-heading block under the same parent, including images, still belongs to that section until the next heading.
 - When images are present, transfer uses media reconstruction: download source bytes, then re-upload into the target document. The copied image block gets a new file token.
+- For direct local image insertion or in-place replacement outside section transfer, use `upload_local_image_to_feishu`.
 - `preview_edit_plan` warns when a section contains images or nested child blocks. Treat that warning as a performance/behavior hint, not as a hard failure.
 - Image reconstruction depends on the active auth context being able to download the source media. A restricted auth mode can still block this path.
 

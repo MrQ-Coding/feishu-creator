@@ -1,6 +1,6 @@
-import type { AppConfig } from "../config.js";
-import type { FeishuClient } from "../feishu/client.js";
-import { TtlCache } from "../utils/ttlCache.js";
+import type { AppConfig } from "../../config.js";
+import type { FeishuClient } from "../../feishu/client.js";
+import { TtlCache } from "../../utils/ttlCache.js";
 
 interface WikiNodeApi {
   node_token?: string;

@@ -379,6 +379,72 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
   );
 
   server.tool(
+    'upsert_section',
+    'Upsert one section by heading text/path: replace its content when found, or append a new heading+content section when missing.',
+    {
+      documentId: documentIdSchema(),
+      ...headingLocatorFields({
+        sectionHeadingDescription: 'Section heading text/path used to locate the target section. When not found, sectionHeading or the last headingPath segment is used for new section creation.',
+      }),
+      blocks: z
+        .array(richTextBlockSchema)
+        .min(1)
+        .describe('Rich-text blocks to use as the section content. When creating a missing section, the heading block is added automatically.'),
+      headingLevel: z
+        .number()
+        .int()
+        .min(1)
+        .max(9)
+        .optional()
+        .describe('Heading level for creating a missing section, within [1, 9]. Ignored when the target section already exists.'),
+      ...chunkedWriteFields({
+        resumeDescription: 'Skip the first N generated children, used for checkpoint resume. When creating a missing section, the generated heading counts toward this number.',
+      }),
+    },
+    async ({
+      documentId,
+      sectionHeading,
+      headingPath,
+      blocks,
+      parentBlockId,
+      sectionOccurrence,
+      pageSize,
+      headingLevel,
+      chunkSize,
+      minChunkSize,
+      adaptiveChunking,
+      resumeFromCreatedCount,
+      checkpointTokenSeed,
+      documentRevisionId,
+      continueOnError,
+    }) => {
+      try {
+        assertHasHeadingLocator(sectionHeading, headingPath);
+        const result = await context.documentEditService.upsertSection({
+          documentId,
+          sectionHeading,
+          headingPath,
+          blocks,
+          parentBlockId,
+          sectionOccurrence,
+          pageSize,
+          headingLevel,
+          chunkSize,
+          minChunkSize,
+          adaptiveChunking,
+          resumeFromCreatedCount,
+          checkpointTokenSeed,
+          documentRevisionId,
+          continueOnError,
+        });
+        return jsonToolResult(result);
+      } catch (error) {
+        return errorToolResult('upsert_section', error);
+      }
+    },
+  );
+
+  server.tool(
     'delete_by_heading',
     'Delete section content (or whole section including heading) by heading text/path using progressive locate.',
     {

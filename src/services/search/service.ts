@@ -1,4 +1,4 @@
-import type { FeishuClient } from "../feishu/client.js";
+import type { FeishuClient } from "../../feishu/client.js";
 
 export type SearchType = "document" | "wiki" | "both";
 type AuthType = "tenant" | "user";

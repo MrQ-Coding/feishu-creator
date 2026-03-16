@@ -2,15 +2,17 @@ import type { AppConfig } from "./config.js";
 import { FeishuAuthManager } from "./feishu/authManager.js";
 import { FeishuClient } from "./feishu/client.js";
 import { Logger } from "./logger.js";
-import { DocumentBlockService } from "./services/documentBlockService.js";
-import { DocumentCreateService } from "./services/documentCreateService.js";
-import { DocumentEditService } from "./services/documentEditService.js";
-import { DocumentInfoService } from "./services/documentInfoService.js";
-import { MarkdownDocumentService } from "./services/markdownDocumentService.js";
-import { SearchService } from "./services/searchService.js";
-import { WikiBrowserDeletionService } from "./services/wikiBrowserDeletionService.js";
-import { WikiSpaceService } from "./services/wikiSpaceService.js";
-import { WikiTreeService } from "./services/wikiTreeService.js";
+import {
+  DocumentBlockService,
+  DocumentCreateService,
+  DocumentInfoService,
+} from "./services/document/index.js";
+import { DocumentEditService } from "./services/documentEdit/index.js";
+import { DiagramImageService } from "./services/diagramImage/index.js";
+import { MarkdownDocumentService } from "./services/markdown/index.js";
+import { SearchService } from "./services/search/index.js";
+import { WikiBrowserDeletionService } from "./services/wikiBrowser/index.js";
+import { WikiSpaceService, WikiTreeService } from "./services/wiki/index.js";
 
 export interface AppContext {
   config: AppConfig;
@@ -20,6 +22,7 @@ export interface AppContext {
   documentCreateService: DocumentCreateService;
   documentEditService: DocumentEditService;
   documentInfoService: DocumentInfoService;
+  diagramImageService: DiagramImageService;
   markdownDocumentService: MarkdownDocumentService;
   searchService: SearchService;
   wikiSpaceService: WikiSpaceService;
@@ -46,6 +49,10 @@ export function createAppContext(config: AppConfig): AppContext {
     documentBlockService,
     documentInfoService,
     wikiBrowserDeletionService,
+    config.feishu,
+  );
+  const diagramImageService = new DiagramImageService(
+    documentEditService,
     config.feishu,
   );
   const markdownDocumentService = new MarkdownDocumentService(
@@ -89,6 +96,7 @@ export function createAppContext(config: AppConfig): AppContext {
     documentCreateService,
     documentEditService,
     documentInfoService,
+    diagramImageService,
     markdownDocumentService,
     searchService,
     wikiSpaceService,

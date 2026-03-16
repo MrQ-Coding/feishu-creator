@@ -1,21 +1,24 @@
-import type { AppConfig } from '../config.js';
-import { detectDocumentType, extractDocumentId } from '../feishu/document.js';
-import type { FeishuClient } from '../feishu/client.js';
-import type { DocumentBlockService } from './documentBlockService.js';
-import type { DocumentInfoService } from './documentInfoService.js';
-import type { WikiBrowserDeletionService } from './wikiBrowserDeletionService.js';
-import { TtlCache } from '../utils/ttlCache.js';
-import type { ProgressiveLocateSectionResult } from './documentEdit/sectionLocator.js';
-import type { DocumentEditRuntime } from './documentEdit/context.js';
+import type { AppConfig } from '../../config.js';
+import { detectDocumentType, extractDocumentId } from '../../feishu/document.js';
+import type { FeishuClient } from '../../feishu/client.js';
+import type { DocumentBlockService, DocumentInfoService } from '../document/index.js';
+import type { WikiBrowserDeletionService } from '../wikiBrowser/index.js';
+import { TtlCache } from '../../utils/ttlCache.js';
+import type { ProgressiveLocateSectionResult } from './sectionLocator.js';
+import type { DocumentEditRuntime } from './context.js';
 import {
   batchUpdateBlockTextCore,
   batchCreateBlocksCore,
+  createTableCore,
   deleteDocumentBlocksCore,
   generateRichTextBlocksCore,
+  getTableCore,
+  replaceTableCore,
   generateSectionBlocksCore,
   updateBlockTextCore,
-} from './documentEdit/blockMutations.js';
-import { uploadLocalImageCore } from './documentEdit/imageUploads.js';
+  updateTableCellCore,
+} from './blockMutations.js';
+import { uploadLocalImageCore } from './imageUploads.js';
 import {
   copySectionCore,
   deleteByHeadingCore,
@@ -25,11 +28,12 @@ import {
   previewEditPlanCore,
   replaceSectionBlocksCore,
   replaceSectionWithOrderedListCore,
-} from './documentEdit/headingOperations.js';
+  upsertSectionCore,
+} from './headingOperations.js';
 import {
   deleteDocumentCore,
   resolveDocumentIdForDelete,
-} from './documentEdit/documentDeletion.js';
+} from './documentDeletion.js';
 
 export type {
   BatchCreateBlocksInput,
@@ -41,6 +45,8 @@ export type {
   BatchUpdateBlockTextResult,
   CopySectionInput,
   CopySectionResult,
+  CreateTableInput,
+  CreateTableResult,
   DeleteByHeadingInput,
   DeleteByHeadingResult,
   DeleteDocumentBlocksInput,
@@ -51,6 +57,8 @@ export type {
   GenerateRichTextBlocksResult,
   GenerateSectionBlocksInput,
   GenerateSectionBlocksResult,
+  GetTableInput,
+  GetTableResult,
   InsertBeforeHeadingInput,
   InsertBeforeHeadingResult,
   LocateSectionRangeInput,
@@ -59,6 +67,8 @@ export type {
   MoveSectionResult,
   PreviewEditPlanInput,
   PreviewEditPlanResult,
+  ReplaceTableInput,
+  ReplaceTableResult,
   ReplaceSectionBlocksInput,
   ReplaceSectionBlocksResult,
   ReplaceSectionWithOrderedListInput,
@@ -67,11 +77,15 @@ export type {
   RichTextBlockType,
   TextElementInput,
   TextElementStyle,
+  UpsertSectionInput,
+  UpsertSectionResult,
   UpdateBlockTextInput,
   UpdateBlockTextResult,
+  UpdateTableCellInput,
+  UpdateTableCellResult,
   UploadLocalImageInput,
   UploadLocalImageResult,
-} from './documentEdit/types.js';
+} from './types.js';
 import type {
   BatchCreateBlocksInput,
   BatchCreateBlocksResult,
@@ -81,6 +95,8 @@ import type {
   BatchUpdateBlockTextResult,
   CopySectionInput,
   CopySectionResult,
+  CreateTableInput,
+  CreateTableResult,
   DeleteByHeadingInput,
   DeleteByHeadingResult,
   DeleteDocumentBlocksInput,
@@ -91,6 +107,8 @@ import type {
   GenerateRichTextBlocksResult,
   GenerateSectionBlocksInput,
   GenerateSectionBlocksResult,
+  GetTableInput,
+  GetTableResult,
   InsertBeforeHeadingInput,
   InsertBeforeHeadingResult,
   LocateSectionRangeInput,
@@ -99,15 +117,21 @@ import type {
   MoveSectionResult,
   PreviewEditPlanInput,
   PreviewEditPlanResult,
+  ReplaceTableInput,
+  ReplaceTableResult,
   ReplaceSectionBlocksInput,
   ReplaceSectionBlocksResult,
   ReplaceSectionWithOrderedListInput,
   ReplaceSectionWithOrderedListResult,
+  UpsertSectionInput,
+  UpsertSectionResult,
   UpdateBlockTextInput,
   UpdateBlockTextResult,
+  UpdateTableCellInput,
+  UpdateTableCellResult,
   UploadLocalImageInput,
   UploadLocalImageResult,
-} from './documentEdit/types.js';
+} from './types.js';
 
 export class DocumentEditService {
   private readonly documentLocks = new Map<string, Promise<void>>();
@@ -215,6 +239,15 @@ export class DocumentEditService {
     const normalizedDocumentId = this.requireDocumentId(input.documentId);
     return this.withDocumentLock(normalizedDocumentId, () =>
       replaceSectionBlocksCore(this.runtime, normalizedDocumentId, input),
+    );
+  }
+
+  async upsertSection(
+    input: UpsertSectionInput,
+  ): Promise<UpsertSectionResult> {
+    const normalizedDocumentId = this.requireDocumentId(input.documentId);
+    return this.withDocumentLock(normalizedDocumentId, () =>
+      upsertSectionCore(this.runtime, normalizedDocumentId, input),
     );
   }
 
@@ -334,6 +367,36 @@ export class DocumentEditService {
     const normalizedDocumentId = this.requireDocumentId(input.documentId);
     return this.withDocumentLock(normalizedDocumentId, () =>
       batchUpdateBlockTextCore(this.runtime, normalizedDocumentId, input),
+    );
+  }
+
+  async createTable(input: CreateTableInput): Promise<CreateTableResult> {
+    const normalizedDocumentId = this.requireDocumentId(input.documentId);
+    return this.withDocumentLock(normalizedDocumentId, () =>
+      createTableCore(this.runtime, normalizedDocumentId, input),
+    );
+  }
+
+  async getTable(input: GetTableInput): Promise<GetTableResult> {
+    const normalizedDocumentId = this.requireDocumentId(input.documentId);
+    return this.withDocumentLock(normalizedDocumentId, () =>
+      getTableCore(this.runtime, normalizedDocumentId, input),
+    );
+  }
+
+  async updateTableCell(
+    input: UpdateTableCellInput,
+  ): Promise<UpdateTableCellResult> {
+    const normalizedDocumentId = this.requireDocumentId(input.documentId);
+    return this.withDocumentLock(normalizedDocumentId, () =>
+      updateTableCellCore(this.runtime, normalizedDocumentId, input),
+    );
+  }
+
+  async replaceTable(input: ReplaceTableInput): Promise<ReplaceTableResult> {
+    const normalizedDocumentId = this.requireDocumentId(input.documentId);
+    return this.withDocumentLock(normalizedDocumentId, () =>
+      replaceTableCore(this.runtime, normalizedDocumentId, input),
     );
   }
 

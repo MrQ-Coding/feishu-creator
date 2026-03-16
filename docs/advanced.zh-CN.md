@@ -84,6 +84,12 @@ npm run profile:bootstrap -- --source .playwright/system-chrome-clone-20260306-1
 | `FEISHU_CACHE_MAX_ENTRIES` |
 | `FEISHU_CACHE_CLEANUP_INTERVAL_SECONDS` |
 
+## Markdown 表格边界
+
+- 基础表格支持现在有两条路径：一条是专门的表格 MCP 工具，用于创建 / 读取 / 替换单元格 / 整体替换表格；另一条是 Markdown 工作流，用于导入导出场景。
+- 这条链路是“够用优先”，不是无损承诺。样式细节和飞书特有的表格能力不保证能完整往返保留。
+- 当前专门开放的表格能力仍然比较克制：还不支持行级、列级结构编辑，也没有合并单元格、拆分单元格、复杂样式这类工具。
+
 ## Section 复制 / 移动
 
 - `copy_section` 会复制完整的 section 区间，包含标题块本身。
@@ -93,6 +99,7 @@ npm run profile:bootstrap -- --source .playwright/system-chrome-clone-20260306-1
 - 在同一父块下移动时，如果目标位置落在源 section 内部，会直接拒绝，避免自重叠。
 - 在同一父块下，直到遇到下一个标题前的非标题块都属于这个 section，末尾图片也不例外。
 - 如果 section 内含图片，当前实现会走“媒体重建”：先下载源图片字节，再上传到目标文档，因此复制后的图片会拿到新的 `file_token`。
+- 如果只是要直接插入本地图片，或原位替换现有图片块，请优先使用 `upload_local_image_to_feishu`。
 - `preview_edit_plan` 遇到图片或嵌套子块时会给 warning。这个 warning 主要是提示行为和耗时，不等于工具必然失败。
 - 图片重建依赖当前鉴权上下文具备源图片下载权限；如果鉴权模式受限，这条链路仍可能失败。
 

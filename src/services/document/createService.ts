@@ -1,6 +1,5 @@
-import type { FeishuClient } from "../feishu/client.js";
-import type { WikiSpaceService } from "./wikiSpaceService.js";
-import type { WikiTreeService } from "./wikiTreeService.js";
+import type { FeishuClient } from "../../feishu/client.js";
+import type { WikiSpaceService, WikiTreeService } from "../wiki/index.js";
 
 export interface CreateWikiContext {
   spaceId: string;

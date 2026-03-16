@@ -177,6 +177,10 @@ The `MCP_HTTP_*` variables below are only needed if you intentionally use `HTTP`
 | `FEISHU_PLAYWRIGHT_ACTION_TIMEOUT_MS` | `45000` | Action timeout |
 | `FEISHU_PLAYWRIGHT_LOGIN_RECOVERY_MODE` | `on_demand` | `on_demand` or `interactive_first` |
 | `FEISHU_PLAYWRIGHT_LOGIN_TIMEOUT_MS` | project config value | Interactive login timeout |
+| `FEISHU_GRAPHVIZ_DOT_PATH` | - | Pin the `dot` executable; otherwise use PATH |
+| `FEISHU_PLANTUML_COMMAND` | - | Pin the `plantuml` executable; takes precedence over jar mode |
+| `FEISHU_PLANTUML_JAR_PATH` | - | PlantUML jar path; when unset, PATH `plantuml` is used |
+| `FEISHU_JAVA_PATH` | - | Pin the `java` executable for jar mode |
 
 ## 7. Smoke Check
 
@@ -216,10 +220,21 @@ This server is wiki-first. It does not expose standalone Drive browsing/search t
 
 ### Document Edit
 
+The public MCP surface currently exposes 40 tools in total. `render_graphviz_diagram`, `create_graphviz_diagram_block`, `render_plantuml_diagram`, `create_plantuml_diagram_block`, `upload_local_image_to_feishu`, `upsert_section`, and the basic table tools are part of the current document-edit toolset.
+
 | Tool | Purpose |
 | --- | --- |
 | `update_feishu_block_text` | Update one existing text-capable block |
 | `batch_update_feishu_blocks` | Update multiple text-capable blocks |
+| `render_graphviz_diagram` | Render Graphviz DOT source to a local PNG/SVG file |
+| `create_graphviz_diagram_block` | Render Graphviz DOT source to PNG and upload it into a document |
+| `render_plantuml_diagram` | Render PlantUML source to a local PNG/SVG file |
+| `create_plantuml_diagram_block` | Render PlantUML source to PNG and upload it into a document |
+| `upload_local_image_to_feishu` | Upload a local image into a document, or replace an existing image block |
+| `create_feishu_table` | Create a basic table block and optionally seed plain-text cell content |
+| `get_feishu_table` | Read a table block and return its plain-text cell matrix |
+| `update_feishu_table_cell` | Replace one table cell by row/column position |
+| `replace_feishu_table` | Replace an entire basic table in place, or recreate it at the same position when the size changes |
 | `delete_feishu_document_blocks` | Delete child blocks by index range |
 | `batch_create_feishu_blocks` | Create child blocks in batch |
 | `locate_section_range` | Locate section start/end by heading |
@@ -228,6 +243,7 @@ This server is wiki-first. It does not expose standalone Drive browsing/search t
 | `preview_edit_plan` | Preview a semantic edit plan without mutating the document |
 | `insert_before_heading` | Insert blocks before heading |
 | `replace_section_blocks` | Replace section content |
+| `upsert_section` | Replace a section when found, or append a new heading+content section when missing |
 | `delete_by_heading` | Delete section by heading |
 | `replace_section_with_ordered_list` | Replace section with ordered list |
 | `generate_section_blocks` | Generate heading/paragraph/list section |
@@ -252,7 +268,7 @@ For `update_feishu_block_text` and `batch_update_feishu_blocks`:
 
 ## 10. Inline Code In Rich Text
 
-Text fields in `generate_section_blocks`, `generate_rich_text_blocks`, `replace_section_blocks`, `insert_before_heading`, and `replace_section_with_ordered_list` support lightweight inline-code parsing:
+Text fields in `generate_section_blocks`, `generate_rich_text_blocks`, `replace_section_blocks`, `upsert_section`, `insert_before_heading`, and `replace_section_with_ordered_list` support lightweight inline-code parsing:
 
 - Wrap code spans in backticks, for example ``Run `npm run build` ``.
 - Only inline code spans are parsed; the input is not treated as a full Markdown document.
@@ -262,13 +278,20 @@ Text fields in `generate_section_blocks`, `generate_rich_text_blocks`, `replace_
 
 The initial Markdown workflow is intentionally lightweight rather than fully lossless.
 
-- Import supports headings, paragraphs, ordered lists, bullet lists, quotes, fenced code blocks, and inline code spans.
-- Export supports the same block set and also renders common inline styles like bold, italic, strikethrough, inline code, and underline (`<u>...</u>`).
-- Nested lists, tables, attachments, and other advanced Feishu-only blocks are not preserved yet.
+- Import supports headings, paragraphs, ordered lists, bullet lists, quotes, fenced code blocks, inline code spans, and basic Markdown tables.
+- Export supports the same core block set and also renders common inline styles like bold, italic, strikethrough, inline code, underline (`<u>...</u>`), and basic Markdown tables when the source structure can be reconstructed.
+- Dedicated MCP tools now cover basic table creation, inspection, single-cell replacement, and whole-table replacement. Richer row-level, column-level, merge, and style operations are still not exposed yet.
+- Markdown table support is still useful for import/export workflows, but it is not lossless and should not be described as a full table-editing surface.
+- Nested lists, attachments, and other advanced Feishu-only blocks are still not preserved yet.
 
 ## 12. Operational Notes
 
 - `create_feishu_document` is wiki-first in normal usage. Pass `wikiContext.spaceId` for new wiki pages, or `folderToken` only when you intentionally need Drive-folder compatibility.
+- For flowcharts and general directed graphs, prefer `render_graphviz_diagram` / `create_graphviz_diagram_block` with full Graphviz DOT source.
+- For sequence diagrams, class diagrams, and other UML-style diagrams, prefer `render_plantuml_diagram` / `create_plantuml_diagram_block`. If `@startuml` / `@enduml` are omitted, the service adds them automatically.
+- PlantUML class-diagram rendering still depends on a working Graphviz `dot`. If it is not on PATH, configure `FEISHU_GRAPHVIZ_DOT_PATH`.
+- For basic document tables, prefer `create_feishu_table`, `get_feishu_table`, `update_feishu_table_cell`, and `replace_feishu_table`. Use the Markdown import/export path when the source is already in Markdown table form.
+- For local image insertion or replacement, prefer `upload_local_image_to_feishu` instead of hand-building raw image blocks.
 - Do not use `search_feishu_documents` as the first verifier for a page you just created or deleted. Prefer `get_feishu_document_info` or `get_feishu_wiki_tree` first, then search later if needed.
 - After `delete_feishu_document` or `batch_delete_feishu_documents`, immediate verification may return a regular not-found response or Feishu `code=1770003` / `resource deleted`. Both should be treated as successful deletion confirmation, and current service code reports that as `postDeleteCheck.verifiedDeleted=true`.
 - `copy_section` and `move_section` operate on the full resolved section range, including trailing non-heading blocks such as images.

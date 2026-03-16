@@ -40,6 +40,96 @@ export interface UploadLocalImageResult {
   documentRevisionId?: number;
 }
 
+export interface TableSizeInput {
+  rowSize?: number;
+  columnSize?: number;
+  cells?: string[][];
+}
+
+export interface CreateTableInput extends TableSizeInput {
+  documentId: string;
+  parentBlockId?: string;
+  index?: number;
+  documentRevisionId?: number;
+}
+
+export interface TableMergeInfo {
+  rowSpan?: number;
+  colSpan?: number;
+}
+
+export interface TableCellRef {
+  rowIndex: number;
+  columnIndex: number;
+  cellBlockId: string;
+  text: string;
+  mergeInfo?: TableMergeInfo;
+}
+
+export interface TableSnapshot {
+  rowSize: number;
+  columnSize: number;
+  cells: string[][];
+  cellBlockIds: string[][];
+  mergeInfo?: Record<string, TableMergeInfo>;
+}
+
+export interface CreateTableResult extends TableSnapshot {
+  documentId: string;
+  parentBlockId: string;
+  index?: number;
+  tableBlockId: string;
+  filledCellCount: number;
+}
+
+export interface GetTableInput {
+  documentId: string;
+  tableBlockId: string;
+}
+
+export interface GetTableResult extends TableSnapshot {
+  documentId: string;
+  tableBlockId: string;
+  parentBlockId?: string;
+  tableIndex?: number;
+}
+
+export interface UpdateTableCellInput {
+  documentId: string;
+  tableBlockId: string;
+  rowIndex: number;
+  columnIndex: number;
+  text: string;
+  documentRevisionId?: number;
+}
+
+export interface UpdateTableCellResult {
+  documentId: string;
+  tableBlockId: string;
+  rowIndex: number;
+  columnIndex: number;
+  cellBlockId: string;
+  text: string;
+  clearedBlockCount: number;
+  createdBlockIds: string[];
+}
+
+export interface ReplaceTableInput extends TableSizeInput {
+  documentId: string;
+  tableBlockId: string;
+  documentRevisionId?: number;
+}
+
+export interface ReplaceTableResult extends TableSnapshot {
+  documentId: string;
+  originalTableBlockId: string;
+  tableBlockId: string;
+  parentBlockId: string;
+  tableIndex: number;
+  recreated: boolean;
+  filledCellCount: number;
+}
+
 export interface TextElementStyle {
   bold?: boolean;
   italic?: boolean;
@@ -294,6 +384,24 @@ export interface ReplaceSectionBlocksInput {
   continueOnError?: boolean;
 }
 
+export interface UpsertSectionInput {
+  documentId: string;
+  sectionHeading?: string;
+  headingPath?: string[];
+  blocks: RichTextBlockSpec[];
+  parentBlockId?: string;
+  sectionOccurrence?: number;
+  pageSize?: number;
+  headingLevel?: number;
+  chunkSize?: number;
+  minChunkSize?: number;
+  adaptiveChunking?: boolean;
+  resumeFromCreatedCount?: number;
+  checkpointTokenSeed?: string;
+  documentRevisionId?: number;
+  continueOnError?: boolean;
+}
+
 export interface ReplaceSectionBlocksResult {
   documentId: string;
   parentBlockId: string;
@@ -305,6 +413,25 @@ export interface ReplaceSectionBlocksResult {
   endIndex: number;
   scannedChildrenCount: number;
   scannedAllChildren: boolean;
+  createdBlockIds: string[];
+  typeCounts: Record<RichTextBlockType, number>;
+}
+
+export interface UpsertSectionResult {
+  documentId: string;
+  parentBlockId: string;
+  mode: 'updated' | 'created';
+  sectionHeading: string;
+  sectionOccurrence: number;
+  insertedCount: number;
+  deletedCount: number;
+  insertIndex: number;
+  startIndex: number;
+  endIndex: number;
+  scannedChildrenCount: number;
+  scannedAllChildren: boolean;
+  headingLevel?: number;
+  headingBlockId?: string;
   createdBlockIds: string[];
   typeCounts: Record<RichTextBlockType, number>;
 }

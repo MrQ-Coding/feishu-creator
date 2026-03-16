@@ -177,6 +177,10 @@ node scripts/callTool.mjs --tool create_feishu_document --args-file ./request.js
 | `FEISHU_PLAYWRIGHT_ACTION_TIMEOUT_MS` | `45000` | 页面动作超时 |
 | `FEISHU_PLAYWRIGHT_LOGIN_RECOVERY_MODE` | `on_demand` | `on_demand` 或 `interactive_first` |
 | `FEISHU_PLAYWRIGHT_LOGIN_TIMEOUT_MS` | 项目配置值 | 交互登录等待时长 |
+| `FEISHU_GRAPHVIZ_DOT_PATH` | - | 指定 `dot` 可执行文件；未填时走系统 PATH |
+| `FEISHU_PLANTUML_COMMAND` | - | 指定 `plantuml` 可执行文件；优先级高于 jar 配置 |
+| `FEISHU_PLANTUML_JAR_PATH` | - | 指定 PlantUML jar 路径；未填时走系统 PATH 上的 `plantuml` |
+| `FEISHU_JAVA_PATH` | - | 当使用 jar 模式时指定 `java` 可执行文件 |
 
 ## 七、快速连通性检查
 
@@ -216,10 +220,21 @@ node scripts/callTool.mjs --tool create_feishu_document --args-file ./request.js
 
 ### 文档编辑
 
+当前公开的 MCP 工具总数是 40 个，其中 `render_graphviz_diagram`、`create_graphviz_diagram_block`、`render_plantuml_diagram`、`create_plantuml_diagram_block`、`upload_local_image_to_feishu`、`upsert_section` 和基础表格工具都已经属于正式的文档编辑能力。
+
 | 工具 | 作用 |
 | --- | --- |
 | `update_feishu_block_text` | 更新单个文本类块 |
 | `batch_update_feishu_blocks` | 批量更新文本类块 |
+| `render_graphviz_diagram` | 将 Graphviz DOT 源码渲染为本地 PNG/SVG 文件 |
+| `create_graphviz_diagram_block` | 将 Graphviz DOT 源码渲染为 PNG 后上传进飞书文档 |
+| `render_plantuml_diagram` | 将 PlantUML 源码渲染为本地 PNG/SVG 文件 |
+| `create_plantuml_diagram_block` | 将 PlantUML 源码渲染为 PNG 后上传进飞书文档 |
+| `upload_local_image_to_feishu` | 上传本地图片到文档，或原位替换已有图片块 |
+| `create_feishu_table` | 创建基础表格块，并可选填充纯文本单元格内容 |
+| `get_feishu_table` | 读取表格块，返回纯文本单元格矩阵 |
+| `update_feishu_table_cell` | 按行列位置替换单个表格单元格 |
+| `replace_feishu_table` | 整体替换基础表格；尺寸变化时会在原位置重建 |
 | `delete_feishu_document_blocks` | 按索引区间删除子块 |
 | `batch_create_feishu_blocks` | 批量创建子块 |
 | `locate_section_range` | 按标题定位 section 范围 |
@@ -228,6 +243,7 @@ node scripts/callTool.mjs --tool create_feishu_document --args-file ./request.js
 | `preview_edit_plan` | 预览语义化编辑计划，不真正修改文档 |
 | `insert_before_heading` | 在标题前插入内容 |
 | `replace_section_blocks` | 替换 section 内容 |
+| `upsert_section` | 命中时替换 section 内容，未命中时追加新的标题加内容 section |
 | `delete_by_heading` | 按标题删除 section |
 | `replace_section_with_ordered_list` | 用有序列表替换 section |
 | `generate_section_blocks` | 生成标题/段落/列表 section |
@@ -252,7 +268,7 @@ node scripts/callTool.mjs --tool create_feishu_document --args-file ./request.js
 
 ## 十、富文本里的内联代码
 
-`generate_section_blocks`、`generate_rich_text_blocks`、`replace_section_blocks`、`insert_before_heading`、`replace_section_with_ordered_list` 的文本字段支持轻量级内联代码解析：
+`generate_section_blocks`、`generate_rich_text_blocks`、`replace_section_blocks`、`upsert_section`、`insert_before_heading`、`replace_section_with_ordered_list` 的文本字段支持轻量级内联代码解析：
 
 - 使用反引号包裹代码片段，例如 ``请执行 `npm run build` ``。
 - 仅解析内联代码 span，不会把整段文本当作完整 Markdown 文档处理。
@@ -262,13 +278,21 @@ node scripts/callTool.mjs --tool create_feishu_document --args-file ./request.js
 
 第一版 Markdown 工作流是“够用优先”的轻量实现，不追求完全无损。
 
-- 导入支持标题、段落、有序列表、无序列表、引用、围栏代码块和内联代码。
-- 导出支持同一组块类型，并会尽量输出粗体、斜体、删除线、内联代码，以及下划线形式的 `<u>...</u>`。
-- 目前还不保留嵌套列表、表格、附件以及其他飞书特有的高级块。
+- 导入支持标题、段落、有序列表、无序列表、引用、围栏代码块、内联代码，以及基础 Markdown 表格。
+- 导出支持同一组核心块类型，并会尽量输出粗体、斜体、删除线、内联代码、下划线形式的 `<u>...</u>`，以及在结构可还原时输出基础 Markdown 表格。
+- 现在已经补上了基础表格 MCP 工具，可直接创建表格、读取表格、替换单元格，以及整体替换基础表格。
+- Markdown 表格链路仍然适合导入导出场景，但它不是无损方案，也不应被描述成完整的表格编辑面。
+- 行级、列级、合并单元格、样式这类更强的表格能力目前仍未单独开放。
+- 嵌套列表、附件以及其他飞书特有的高级块目前仍不保留。
 
 ## 十二、操作注意事项
 
 - `create_feishu_document` 的常规用法是 wiki-first。新建知识库页面请传 `wikiContext.spaceId`；只有明确需要兼容 Drive 文件夹时才传 `folderToken`。
+- 流程图与通用有向图优先使用 `render_graphviz_diagram` / `create_graphviz_diagram_block`，输入应为完整的 Graphviz DOT 源码。
+- 时序图、类图等 UML 图优先使用 `render_plantuml_diagram` / `create_plantuml_diagram_block`。如果源码里未显式写 `@startuml` / `@enduml`，服务会自动补齐。
+- `create_plantuml_diagram_block` 渲染类图时仍依赖本机可用的 Graphviz `dot`；如果 `dot` 不在系统 PATH，可通过 `FEISHU_GRAPHVIZ_DOT_PATH` 配置。
+- 做基础文档表格时，优先使用 `create_feishu_table`、`get_feishu_table`、`update_feishu_table_cell`、`replace_feishu_table`；如果源内容本来就是 Markdown 表格，再考虑 `import_markdown_to_feishu` / `export_feishu_document_to_markdown`。
+- 需要插入本地图片或替换现有图片时，优先使用 `upload_local_image_to_feishu`，不要手写底层图片块结构。
 - 新建或删除文档后，不要第一时间用 `search_feishu_documents` 当成验收依据。应先用 `get_feishu_document_info` 或 `get_feishu_wiki_tree`，搜索可留到索引同步后再做。
 - `delete_feishu_document` 或 `batch_delete_feishu_documents` 的即时校验，可能返回普通 not-found，也可能返回飞书 `code=1770003` / `resource deleted`。这两种都应视为“删除已成功确认”，当前服务会把它们统一映射成 `postDeleteCheck.verifiedDeleted=true`。
 - `copy_section` 和 `move_section` 处理的是完整 section 区间，标题后面紧跟的图片等非标题块也会一起算进去。

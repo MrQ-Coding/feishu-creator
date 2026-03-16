@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AppContext } from "../appContext.js";
 import { registerAuthTools } from "./tools/authTools.js";
+import { registerDiagramTools } from "./tools/diagramTools.js";
 import { registerDocumentCoreTools } from "./tools/documentCoreTools.js";
 import { registerDocumentEditTools } from "./tools/documentEditTools.js";
 import { registerDocumentMarkdownTools } from "./tools/documentMarkdownTools.js";
@@ -19,6 +20,7 @@ export function createMcpServer(context: AppContext): McpServer {
   registerAuthTools(server, context);
   registerDocumentCoreTools(server, context);
   registerDocumentEditTools(server, context);
+  registerDiagramTools(server, context);
   registerDocumentMarkdownTools(server, context);
   registerWikiTools(server, context);
 
