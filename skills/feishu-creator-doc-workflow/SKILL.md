@@ -12,6 +12,8 @@ Use this skill when the task touches the `feishu-creator` lifecycle end-to-end: 
 - Setup, install, bootstrap, or client wiring: start with [references/setup-recipes.md](references/setup-recipes.md).
 - Document creation, inspection, update, replace, move, copy, or verification: start with [references/operation-recipes.md](references/operation-recipes.md).
 - User-facing setup reporting: use [references/install-report-template.md](references/install-report-template.md).
+- Shared HTTP deployment, OAuth binding, or multi-user identity questions: use [references/http-multi-user-recipes.md](references/http-multi-user-recipes.md).
+- User-agent / gateway request protocol questions: use [references/user-agent-mcp-protocol.md](references/user-agent-mcp-protocol.md).
 
 ## Default Workflow
 
@@ -28,3 +30,4 @@ Use this skill when the task touches the `feishu-creator` lifecycle end-to-end: 
 - Prefer heading-based tools such as `replace_section_blocks`, `upsert_section`, `copy_section`, and `move_section` over guessed block indices.
 - For deletions, prefer semantic or service-level flows before raw block-index deletion.
 - Do not dump raw MCP tool output back to the user without a short explanatory sentence.
+- In shared HTTP mode, do not imply that `MCP_HTTP_AUTH_TOKEN` identifies the end user. It only protects access to the MCP endpoint.

@@ -25,11 +25,25 @@ import { DocumentEditService } from "./services/documentEdit/index.js";
 import { DiagramImageService } from "./services/diagramImage/index.js";
 import { MarkdownDocumentService } from "./services/markdown/index.js";
 import { SearchService } from "./services/search/index.js";
+import { StyleProfileService } from "./services/styleProfile/index.js";
 import { WikiBrowserDeletionService } from "./services/wikiBrowser/index.js";
 import { WikiSpaceService, WikiTreeService } from "./services/wiki/index.js";
 
+export interface RuntimeIdentity {
+  scope: "global" | "http-session";
+  source: "env" | "http-headers";
+  appUserId?: string;
+}
+
+export interface AppContextOptions {
+  runtimeIdentity?: RuntimeIdentity;
+  allowUserTokenEnvPersistence?: boolean;
+}
+
 export interface AppContext {
   config: AppConfig;
+  runtimeIdentity: RuntimeIdentity;
+  allowUserTokenEnvPersistence: boolean;
   notePlatformProvider: NotePlatformProvider;
   notePlatformDocumentGateway: NotePlatformDocumentGateway;
   notePlatformKnowledgeGateway: NotePlatformKnowledgeGateway;
@@ -45,12 +59,16 @@ export interface AppContext {
   diagramImageService: DiagramImageService;
   markdownDocumentService: MarkdownDocumentService;
   searchService: SearchService;
+  styleProfileService: StyleProfileService;
   wikiSpaceService: WikiSpaceService;
   wikiTreeService: WikiTreeService;
   shutdown(): Promise<void>;
 }
 
-export function createAppContext(config: AppConfig): AppContext {
+export function createAppContext(
+  config: AppConfig,
+  options: AppContextOptions = {},
+): AppContext {
   const notePlatformProvider = new FeishuNotePlatformProvider();
   const authManager = new FeishuAuthManager(config.feishu);
   const feishuClient = new FeishuClient(config.feishu, authManager);
@@ -104,6 +122,15 @@ export function createAppContext(config: AppConfig): AppContext {
     documentBlockService,
     documentEditService,
   );
+  const styleProfileService = new StyleProfileService(
+    searchService,
+    markdownDocumentService,
+    authManager,
+    options.runtimeIdentity ?? {
+      scope: "global",
+      source: "env",
+    },
+  );
 
   const cleanupTimer = setInterval(() => {
     const blocksRemoved = documentBlockService.cleanupExpired();
@@ -135,6 +162,11 @@ export function createAppContext(config: AppConfig): AppContext {
 
   return {
     config,
+    runtimeIdentity: options.runtimeIdentity ?? {
+      scope: "global",
+      source: "env",
+    },
+    allowUserTokenEnvPersistence: options.allowUserTokenEnvPersistence ?? true,
     notePlatformProvider,
     notePlatformDocumentGateway,
     notePlatformKnowledgeGateway,
@@ -150,6 +182,7 @@ export function createAppContext(config: AppConfig): AppContext {
     diagramImageService,
     markdownDocumentService,
     searchService,
+    styleProfileService,
     wikiSpaceService,
     wikiTreeService,
     shutdown,

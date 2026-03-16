@@ -74,7 +74,11 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
     async ({ fetchToken }) => {
       const status = context.authManager.getStatus();
       if (!fetchToken) {
-        return jsonToolResult(status);
+        return jsonToolResult({
+          ...status,
+          runtimeIdentity: context.runtimeIdentity,
+          allowUserTokenEnvPersistence: context.allowUserTokenEnvPersistence,
+        });
       }
 
       try {
@@ -83,6 +87,8 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
           ...status,
           tokenFetched: true,
           tokenPreview: maskToken(token),
+          runtimeIdentity: context.runtimeIdentity,
+          allowUserTokenEnvPersistence: context.allowUserTokenEnvPersistence,
           networkEnv: getNetworkEnvSummary(),
         });
       } catch (error) {
@@ -91,6 +97,8 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
           ...status,
           tokenFetched: false,
           error: errorMessage,
+          runtimeIdentity: context.runtimeIdentity,
+          allowUserTokenEnvPersistence: context.allowUserTokenEnvPersistence,
           networkEnv: getNetworkEnvSummary(),
           hint: buildTokenFetchHint(errorMessage),
         });
@@ -160,8 +168,14 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
         const effectiveAuthType = switchToUser
           ? context.authManager.setAuthTypeOverride("user")
           : context.authManager.setAuthTypeOverride(undefined);
+        const appliedWriteToEnv = writeToEnv && context.allowUserTokenEnvPersistence;
         let persistedEnvPath: string | undefined;
-        if (writeToEnv) {
+        let writeToEnvWarning: string | undefined;
+        if (writeToEnv && !context.allowUserTokenEnvPersistence) {
+          writeToEnvWarning =
+            "Skipping shared .env persistence because the current runtime is session-scoped.";
+        }
+        if (appliedWriteToEnv) {
           persistedEnvPath = await persistUserEnv({
             envFile: DEFAULT_ENV_FILE,
             accessToken: tokenResult.accessToken,
@@ -179,8 +193,11 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
             : undefined,
           expiresAtUnixSec: tokenResult.expiresAtUnixSec,
           refreshTokenExpiresAtUnixSec: tokenResult.refreshTokenExpiresAtUnixSec,
-          writeToEnv,
+          writeToEnvRequested: writeToEnv,
+          writeToEnvApplied: appliedWriteToEnv,
+          writeToEnvWarning,
           envFile: persistedEnvPath,
+          runtimeIdentity: context.runtimeIdentity,
         });
       } catch (error) {
         return errorToolResult("exchange_user_auth_code", error);
@@ -214,8 +231,14 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
         const effectiveAuthType = switchToUser
           ? context.authManager.setAuthTypeOverride("user")
           : context.authManager.setAuthTypeOverride(undefined);
+        const appliedWriteToEnv = writeToEnv && context.allowUserTokenEnvPersistence;
         let persistedEnvPath: string | undefined;
-        if (writeToEnv) {
+        let writeToEnvWarning: string | undefined;
+        if (writeToEnv && !context.allowUserTokenEnvPersistence) {
+          writeToEnvWarning =
+            "Skipping shared .env persistence because the current runtime is session-scoped.";
+        }
+        if (appliedWriteToEnv) {
           persistedEnvPath = await persistUserEnv({
             envFile: DEFAULT_ENV_FILE,
             accessToken: tokenResult.accessToken,
@@ -233,8 +256,11 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
             : undefined,
           expiresAtUnixSec: tokenResult.expiresAtUnixSec,
           refreshTokenExpiresAtUnixSec: tokenResult.refreshTokenExpiresAtUnixSec,
-          writeToEnv,
+          writeToEnvRequested: writeToEnv,
+          writeToEnvApplied: appliedWriteToEnv,
+          writeToEnvWarning,
           envFile: persistedEnvPath,
+          runtimeIdentity: context.runtimeIdentity,
         });
       } catch (error) {
         return errorToolResult("set_user_tokens", error);
@@ -254,6 +280,7 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
         return jsonToolResult({
           effectiveAuthType,
           status: context.authManager.getStatus(),
+          runtimeIdentity: context.runtimeIdentity,
         });
       } catch (error) {
         return errorToolResult("set_auth_mode", error);

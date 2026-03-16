@@ -191,6 +191,8 @@ copy_section（documentId: 源文档ID, sectionHeading: "背景", targetDocument
 `tenant` 模式最省心，适合日常自动化；限制是 Wiki 搜索会自动降级为文档搜索。  
 `user` 模式用指定用户的 token，适合需要按用户权限访问内容的场景。
 
+需要特别注意：`stdio` 模式天然更适合单用户。本项目当前的 HTTP 模式已经支持“每个 MCP session 独立的运行时鉴权上下文”，但前提是外层调用方在 session 初始化时把用户对应的 Feishu token 信息带进来。
+
 如果要走 OAuth 回调或接真实 HTTP MCP 客户端，可以启用 HTTP 模式：
 
 ```bash
@@ -204,6 +206,45 @@ HTTP 模式提供：
 - `GET /callback`
 
 默认开启 Bearer 鉴权，可通过 `Authorization: Bearer <MCP_HTTP_AUTH_TOKEN>` 或 `x-mcp-token` 传入。
+
+需要特别注意：`MCP_HTTP_AUTH_TOKEN` 只用于保护 MCP 入口，不代表“这是哪个最终用户”。当前 HTTP 模式里的服务进程仍共享一套运行时飞书鉴权上下文，所以它更适合：
+
+- 单用户独占实例
+- 单一 `tenant` 自动化身份
+
+如果要把它部署成真正的多用户共享服务，推荐在外层应用或网关先完成用户登录与 Feishu OAuth 绑定，再按你自己的 `app_user_id` 解析该用户对应的 Feishu token，并为每个请求提供用户级鉴权上下文。不要让终端用户在 MCP 配置里直接提交账号密码。
+
+当前 HTTP 实现支持在 MCP initialize 时注入这些可选请求头，用来创建 session 级别的用户上下文：
+
+- `x-app-user-id`
+- `x-feishu-auth-type`
+- `x-feishu-user-access-token`
+- `x-feishu-user-refresh-token`
+- `x-feishu-user-access-token-expires-at`
+- `x-feishu-user-refresh-token-expires-at`
+
+推荐做法是：你的网关先识别业务用户，再查你自己保存的 Feishu OAuth 记录，然后只在创建 MCP session 时把该用户对应的 token 信息透传给 `feishu-creator`。后续工具调用复用同一个 MCP session 即可。
+
+### 用户代理 -> MCP 协议
+
+如果你希望 `feishu-creator` 只做服务层，而由用户系统或本地代理负责 OAuth 和 token 刷新，推荐按下面的角色分工接入：
+
+- 用户系统 / 用户本地代理负责：
+  - 完成 Feishu OAuth
+  - 刷新用户 token
+  - 在创建 MCP session 时把用户 token 透传给 `feishu-creator`
+- `feishu-creator` 负责：
+  - 使用这些 token 调 Feishu API
+  - 读取用户文档
+  - 生成文风画像或技术文档
+  - 把画像和生成结果保存回用户自己的飞书文档
+
+推荐的默认内容归宿也是“用户自己的飞书”：
+
+- `feishu-style-extract` 默认把确认后的画像保存回用户飞书
+- `feishu-doc-writer` 在需要复用文风时，优先从用户飞书里取回画像文档再应用
+
+更完整的请求协议和 header 约定见 [user-agent-mcp-protocol.md](./skills/feishu-creator-doc-workflow/references/user-agent-mcp-protocol.md)。
 
 ---
 

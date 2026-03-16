@@ -35,6 +35,21 @@
 - [`feishu-doc-writer/references/feishu-note-template.md`](./feishu-doc-writer/references/feishu-note-template.md)
 - [`feishu-doc-writer/agents/openai.yaml`](./feishu-doc-writer/agents/openai.yaml)
 
+### `feishu-style-extract`
+
+适用场景：
+
+- 从多篇飞书文档中分析个人或团队成员的写作风格
+- 为“按某人的文风写作”先生成一个可复用的风格画像
+- 校准一组文档的语气、段落节奏、标题习惯和表达方式
+- 把分析结果保存回飞书，作为后续写作的风格基线
+
+目录：
+
+- [`feishu-style-extract/SKILL.md`](./feishu-style-extract/SKILL.md)
+- [`feishu-style-extract/references/style-profile-template.md`](./feishu-style-extract/references/style-profile-template.md)
+- [`feishu-style-extract/agents/openai.yaml`](./feishu-style-extract/agents/openai.yaml)
+
 ## 使用方式
 
 先把仓库里的 skill 同步到本机 Codex skill 目录：

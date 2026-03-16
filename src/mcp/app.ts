@@ -6,6 +6,7 @@ import { registerDocumentCoreTools } from "./tools/documentCoreTools.js";
 import { registerDocumentEditTools } from "./tools/documentEditTools.js";
 import { registerDocumentMarkdownTools } from "./tools/documentMarkdownTools.js";
 import { registerWikiTools } from "./tools/wikiTools.js";
+import { registerStyleProfileTools } from "./tools/styleProfileTools.js";
 
 export const serverInfo = {
   name: "feishu-creator",
@@ -23,6 +24,7 @@ export function createMcpServer(context: AppContext): McpServer {
   registerDiagramTools(server, context);
   registerDocumentMarkdownTools(server, context);
   registerWikiTools(server, context);
+  registerStyleProfileTools(server, context);
 
   return server;
 }

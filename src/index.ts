@@ -3,11 +3,12 @@
 import express from "express";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import type { Server as HttpServer } from "node:http";
+import type { IncomingHttpHeaders } from "node:http";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./mcp/app.js";
-import { getConfig } from "./config.js";
+import { getConfig, type AppConfig } from "./config.js";
 import {
   persistUserEnv,
   persistUserRefreshTokenInvalidation,
@@ -122,8 +123,130 @@ function createStdioShutdownHandler(
 type McpServerInstance = ReturnType<typeof createMcpServer>;
 
 interface HttpSession {
+  context: AppContext;
   server: McpServerInstance;
   transport: StreamableHTTPServerTransport;
+}
+
+interface HttpSessionContextHeaders {
+  appUserId?: string;
+  authType?: "tenant" | "user";
+  userAccessToken?: string;
+  userRefreshToken?: string;
+  userAccessTokenExpiresAt?: number;
+  userRefreshTokenExpiresAt?: number;
+}
+
+function pickFirstHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  }
+  if (Array.isArray(value) && value.length > 0) {
+    return pickFirstHeaderValue(value[0]);
+  }
+  return undefined;
+}
+
+function parsePositiveIntHeader(name: string, value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid header ${name}: expected a positive integer.`);
+  }
+  return parsed;
+}
+
+function resolveHttpSessionContextHeaders(
+  headers: IncomingHttpHeaders,
+): HttpSessionContextHeaders | undefined {
+  const appUserId = pickFirstHeaderValue(headers["x-app-user-id"]);
+  const authTypeHeader = pickFirstHeaderValue(headers["x-feishu-auth-type"]);
+  let authType: "tenant" | "user" | undefined;
+  if (authTypeHeader) {
+    if (authTypeHeader !== "tenant" && authTypeHeader !== "user") {
+      throw new Error(
+        "Invalid header x-feishu-auth-type: expected tenant or user.",
+      );
+    }
+    authType = authTypeHeader;
+  }
+
+  const userAccessToken = pickFirstHeaderValue(headers["x-feishu-user-access-token"]);
+  const userRefreshToken = pickFirstHeaderValue(headers["x-feishu-user-refresh-token"]);
+  const userAccessTokenExpiresAt = parsePositiveIntHeader(
+    "x-feishu-user-access-token-expires-at",
+    pickFirstHeaderValue(headers["x-feishu-user-access-token-expires-at"]),
+  );
+  const userRefreshTokenExpiresAt = parsePositiveIntHeader(
+    "x-feishu-user-refresh-token-expires-at",
+    pickFirstHeaderValue(headers["x-feishu-user-refresh-token-expires-at"]),
+  );
+
+  const hasSessionScopedIdentity = Boolean(
+    appUserId ||
+      authType ||
+      userAccessToken ||
+      userRefreshToken ||
+      userAccessTokenExpiresAt ||
+      userRefreshTokenExpiresAt,
+  );
+
+  if (!hasSessionScopedIdentity) {
+    return undefined;
+  }
+
+  return {
+    appUserId,
+    authType:
+      authType ?? (userAccessToken || userRefreshToken ? "user" : undefined),
+    userAccessToken,
+    userRefreshToken,
+    userAccessTokenExpiresAt,
+    userRefreshTokenExpiresAt,
+  };
+}
+
+function createHttpSessionConfig(
+  baseConfig: AppConfig,
+  headers: HttpSessionContextHeaders,
+): AppConfig {
+  const authType = headers.authType ?? baseConfig.feishu.authType;
+  return {
+    server: { ...baseConfig.server },
+    feishu: {
+      ...baseConfig.feishu,
+      authType,
+      userAccessToken:
+        headers.userAccessToken ?? baseConfig.feishu.userAccessToken,
+      userRefreshToken:
+        headers.userRefreshToken ?? baseConfig.feishu.userRefreshToken,
+      userAccessTokenExpiresAt:
+        headers.userAccessTokenExpiresAt ??
+        baseConfig.feishu.userAccessTokenExpiresAt,
+      userRefreshTokenExpiresAt:
+        headers.userRefreshTokenExpiresAt ??
+        baseConfig.feishu.userRefreshTokenExpiresAt,
+    },
+  };
+}
+
+function createSessionScopedContext(
+  baseConfig: AppConfig,
+  headers?: HttpSessionContextHeaders,
+): AppContext {
+  const effectiveHeaders = headers ?? {};
+  const sessionConfig = createHttpSessionConfig(baseConfig, effectiveHeaders);
+  const context = createAppContext(sessionConfig, {
+    runtimeIdentity: {
+      scope: "http-session",
+      source: headers ? "http-headers" : "env",
+      appUserId: effectiveHeaders.appUserId,
+    },
+    allowUserTokenEnvPersistence: false,
+  });
+  context.authManager.startBackgroundRefresh();
+  return context;
 }
 
 async function runStdio(context: AppContext): Promise<void> {
@@ -187,6 +310,7 @@ async function runHttp(context: AppContext): Promise<void> {
     sessions.delete(sessionId);
     await session.transport.close().catch(() => undefined);
     await session.server.close().catch(() => undefined);
+    await session.context.shutdown().catch(() => undefined);
   };
 
   const closeAllSessions = async (): Promise<void> => {
@@ -355,11 +479,16 @@ async function runHttp(context: AppContext): Promise<void> {
       if (session) {
         // Existing stateful HTTP session.
       } else if (!sessionId && isInitializeRequest(req.body)) {
-        const server = createMcpServer(context);
+        const sessionHeaders = resolveHttpSessionContextHeaders(req.headers);
+        const sessionContext = createSessionScopedContext(
+          context.config,
+          sessionHeaders,
+        );
+        const server = createMcpServer(sessionContext);
         const transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (id) => {
-            sessions.set(id, { server, transport });
+            sessions.set(id, { context: sessionContext, server, transport });
           },
         });
 
@@ -370,7 +499,7 @@ async function runHttp(context: AppContext): Promise<void> {
         };
 
         await server.connect(transport);
-        session = { server, transport };
+        session = { context: sessionContext, server, transport };
       } else {
         res.status(400).json({
           jsonrpc: "2.0",
@@ -384,9 +513,10 @@ async function runHttp(context: AppContext): Promise<void> {
     } catch (error) {
       Logger.error("HTTP MCP request failed", error);
       if (!res.headersSent) {
+        const message = error instanceof Error ? error.message : "Internal server error";
         res.status(500).json({
           jsonrpc: "2.0",
-          error: { code: -32603, message: "Internal server error" },
+          error: { code: -32603, message },
           id: null,
         });
       }
