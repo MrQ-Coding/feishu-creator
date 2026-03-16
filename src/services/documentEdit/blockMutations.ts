@@ -1,4 +1,3 @@
-import { buildBulletBlock, buildHeadingBlock, buildOrderedBlock, buildRichTextChildren, buildTextBlock } from './richTextBlocks.js';
 import type { DocumentEditRuntime } from './context.js';
 import {
   buildUpdateTextElement,
@@ -26,7 +25,6 @@ import type {
   GenerateSectionBlocksInput,
   GenerateSectionBlocksResult,
   UpdateBlockTextInput,
-  UpdateBlockTextResponse,
   UpdateBlockTextResult,
 } from './types.js';
 
@@ -183,15 +181,15 @@ export async function generateSectionBlocksCore(
   const bulletItems = normalizeTextItems(input.bulletItems);
 
   const children: Array<Record<string, unknown>> = [];
-  children.push(buildHeadingBlock(headingLevel, title));
+  children.push(runtime.notePlatformProvider.buildHeadingBlock(headingLevel, title));
   for (const paragraph of paragraphs) {
-    children.push(buildTextBlock(paragraph));
+    children.push(runtime.notePlatformProvider.buildTextBlock(paragraph));
   }
   for (const orderedItem of orderedItems) {
-    children.push(buildOrderedBlock(orderedItem));
+    children.push(runtime.notePlatformProvider.buildOrderedBlock(orderedItem));
   }
   for (const bulletItem of bulletItems) {
-    children.push(buildBulletBlock(bulletItem));
+    children.push(runtime.notePlatformProvider.buildBulletBlock(bulletItem));
   }
 
   const result = await batchCreateBlocksCore(runtime, normalizedDocumentId, {
@@ -228,10 +226,14 @@ export async function generateRichTextBlocksCore(
     throw new Error('blocks must be a non-empty array.');
   }
 
-  const { children, typeCounts } = buildRichTextChildren(input.blocks, {
-    normalizeHeadingLevel,
-    normalizeCodeLanguage: (value) => normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
-  });
+  const { children, typeCounts } = runtime.notePlatformProvider.buildRichTextChildren(
+    input.blocks,
+    {
+      normalizeHeadingLevel,
+      normalizeCodeLanguage: (value) =>
+        normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
+    },
+  );
 
   const result = await batchCreateBlocksCore(runtime, normalizedDocumentId, {
     documentId: normalizedDocumentId,
@@ -283,17 +285,14 @@ async function patchBlockText(
   blockId: string,
   elements: Array<Record<string, unknown>>,
   documentRevisionId: number,
-): Promise<UpdateBlockTextResponse> {
-  return runtime.feishuClient.request<UpdateBlockTextResponse>(
-    `/docx/v1/documents/${normalizedDocumentId}/blocks/${blockId}`,
-    'PATCH',
-    {
-      update_text_elements: {
-        elements,
-      },
-    },
-    {
-      document_revision_id: documentRevisionId,
-    },
-  );
+): Promise<{ document_revision_id?: number }> {
+  const result = await runtime.notePlatformEditGateway.updateBlockText({
+    documentId: normalizedDocumentId,
+    blockId,
+    elements,
+    documentRevisionId,
+  });
+  return {
+    document_revision_id: result.documentRevisionId,
+  };
 }

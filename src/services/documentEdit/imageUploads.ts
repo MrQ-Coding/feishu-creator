@@ -10,20 +10,7 @@ import {
   normalizePositiveImageDimension,
   resolveImageDimensions,
 } from './imageMetadata.js';
-import type {
-  CreateBlockChildrenResponse,
-  UploadLocalImageInput,
-  UploadLocalImageResult,
-} from './types.js';
-
-interface UploadMediaResponse {
-  file_token?: string;
-}
-
-interface UpdateImageBlockResponse {
-  block?: Record<string, unknown>;
-  document_revision_id?: number;
-}
+import type { UploadLocalImageInput, UploadLocalImageResult } from './types.js';
 
 interface NormalizedUploadInput {
   imagePath: string;
@@ -69,7 +56,7 @@ export async function uploadLocalImageCore(
   normalizedDocumentId: string,
   input: UploadLocalImageInput,
 ): Promise<UploadLocalImageResult> {
-  const normalized = await normalizeUploadInput(input);
+  const normalized = await normalizeUploadInput(input, normalizedDocumentId);
   const imageBytes = await readFile(normalized.imagePath);
   const uploadResult = await uploadImageBytesCore(runtime, normalizedDocumentId, {
     imageBytes,
@@ -106,7 +93,7 @@ export async function uploadImageBytesCore(
   normalizedDocumentId: string,
   input: UploadImageBytesInput,
 ): Promise<UploadImageBytesResult> {
-  const normalized = normalizeUploadBytesInput(input);
+  const normalized = normalizeUploadBytesInput(input, normalizedDocumentId);
   let imageBlockId = normalized.imageBlockId;
   let currentRevisionId = normalized.documentRevisionId;
   let mode: UploadImageBytesResult['mode'] = 'replace';
@@ -158,6 +145,7 @@ export async function uploadImageBytesCore(
 
 async function normalizeUploadInput(
   input: UploadLocalImageInput,
+  defaultParentBlockId?: string,
 ): Promise<NormalizedUploadInput> {
   const imagePath = path.resolve(input.imagePath?.trim() || '');
   if (!imagePath) {
@@ -169,9 +157,9 @@ async function normalizeUploadInput(
   if (replaceBlockId && parentBlockId) {
     throw new Error('Provide either replaceBlockId or parentBlockId, not both.');
   }
-  if (!replaceBlockId && !parentBlockId) {
-    throw new Error('Either replaceBlockId or parentBlockId is required.');
-  }
+  const effectiveParentBlockId = replaceBlockId
+    ? undefined
+    : parentBlockId ?? defaultParentBlockId;
 
   const fileStats = await readFile(imagePath).catch(() => null);
   if (!fileStats) {
@@ -197,7 +185,7 @@ async function normalizeUploadInput(
     fileName,
     mimeType,
     imageBlockId: replaceBlockId,
-    parentBlockId,
+    parentBlockId: effectiveParentBlockId,
     index: normalizeOptionalIndex(input.index),
     width,
     height,
@@ -205,7 +193,22 @@ async function normalizeUploadInput(
   };
 }
 
-function normalizeUploadBytesInput(input: UploadImageBytesInput): UploadImageBytesInput & {
+function normalizeUploadBytesInput(
+  input: UploadImageBytesInput,
+  defaultParentBlockId?: string,
+): UploadImageBytesInput & {
+  imageBlockId?: string;
+  parentBlockId?: string;
+  index?: number;
+  documentRevisionId: number;
+} {
+  return normalizeUploadBytesInputWithDefault(input, defaultParentBlockId);
+}
+
+function normalizeUploadBytesInputWithDefault(
+  input: UploadImageBytesInput,
+  defaultParentBlockId?: string,
+): UploadImageBytesInput & {
   imageBlockId?: string;
   parentBlockId?: string;
   index?: number;
@@ -216,9 +219,9 @@ function normalizeUploadBytesInput(input: UploadImageBytesInput): UploadImageByt
   if (imageBlockId && parentBlockId) {
     throw new Error('Provide either imageBlockId or parentBlockId, not both.');
   }
-  if (!imageBlockId && !parentBlockId) {
-    throw new Error('Either imageBlockId or parentBlockId is required.');
-  }
+  const effectiveParentBlockId = imageBlockId
+    ? undefined
+    : parentBlockId ?? defaultParentBlockId;
   const fileName = input.fileName?.trim();
   if (!fileName) {
     throw new Error('fileName is required.');
@@ -242,7 +245,7 @@ function normalizeUploadBytesInput(input: UploadImageBytesInput): UploadImageByt
     fileName,
     mimeType,
     imageBlockId,
-    parentBlockId,
+    parentBlockId: effectiveParentBlockId,
     index: normalizeOptionalIndex(input.index),
     width,
     height,
@@ -261,38 +264,21 @@ async function createImageBlock(
     documentRevisionId: number;
   },
 ): Promise<{ imageBlockId: string; documentRevisionId?: number }> {
-  const requestBody: Record<string, unknown> = {
-    children: [
-      {
-        block_type: 27,
-        image: {
-          width: input.width,
-          height: input.height,
-          token: '',
-        },
-      },
-    ],
-  };
-  if (input.index !== undefined) {
-    requestBody.index = input.index;
-  }
-
-  const createResult = await runtime.feishuClient.request<CreateBlockChildrenResponse>(
-    `/docx/v1/documents/${normalizedDocumentId}/blocks/${input.parentBlockId}/children`,
-    'POST',
-    requestBody,
-    {
-      document_revision_id: input.documentRevisionId,
-      client_token: randomUUID(),
-    },
-  );
+  const createResult = await runtime.notePlatformEditGateway.createBlockChildren({
+    documentId: normalizedDocumentId,
+    parentBlockId: input.parentBlockId!,
+    children: [runtime.notePlatformProvider.buildImageBlock(input.width, input.height)],
+    index: input.index,
+    documentRevisionId: input.documentRevisionId,
+    clientToken: randomUUID(),
+  });
   const imageBlockId = extractBlockIds(createResult.children ?? [])[0];
   if (!imageBlockId) {
     throw new Error('Image block creation failed: response missing created block_id.');
   }
   return {
     imageBlockId,
-    documentRevisionId: createResult.document_revision_id,
+    documentRevisionId: createResult.documentRevisionId,
   };
 }
 
@@ -309,45 +295,21 @@ async function uploadImageBytesToBlock(
     documentRevisionId: number;
   },
 ): Promise<{ fileToken: string; documentRevisionId?: number }> {
-  const formData = new FormData();
-  const blob = new Blob([new Uint8Array(input.imageBytes)], {
-    type: input.mimeType,
+  const bindResult = await runtime.notePlatformMediaGateway.uploadImageToBlock({
+    documentId: normalizedDocumentId,
+    imageBlockId: input.imageBlockId,
+    imageBytes: input.imageBytes,
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    width: input.width,
+    height: input.height,
+    documentRevisionId: input.documentRevisionId,
   });
-  formData.append('file', blob, input.fileName);
-  formData.append('file_name', input.fileName);
-  formData.append('parent_type', 'docx_image');
-  formData.append('parent_node', input.imageBlockId);
-  formData.append('size', String(input.imageBytes.byteLength));
-
-  const uploadResult = await runtime.feishuClient.request<UploadMediaResponse>(
-    '/drive/v1/medias/upload_all',
-    'POST',
-    formData,
-  );
-  const fileToken = uploadResult.file_token?.trim();
-  if (!fileToken) {
-    throw new Error('Image upload failed: response missing file_token.');
-  }
-
-  const bindResult = await runtime.feishuClient.request<UpdateImageBlockResponse>(
-    `/docx/v1/documents/${normalizedDocumentId}/blocks/${input.imageBlockId}`,
-    'PATCH',
-    {
-      replace_image: {
-        token: fileToken,
-        width: input.width,
-        height: input.height,
-      },
-    },
-    {
-      document_revision_id: input.documentRevisionId,
-    },
-  );
 
   runtime.invalidateDocumentState(normalizedDocumentId);
 
   return {
-    fileToken,
-    documentRevisionId: bindResult.document_revision_id,
+    fileToken: bindResult.fileToken,
+    documentRevisionId: bindResult.documentRevisionId,
   };
 }

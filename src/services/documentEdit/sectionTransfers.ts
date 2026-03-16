@@ -1,4 +1,3 @@
-import { extractDocumentId } from '../../feishu/document.js';
 import type { DocumentEditRuntime } from './context.js';
 import { batchCreateBlocksCore, deleteChildrenRange } from './blockMutations.js';
 import {
@@ -15,30 +14,6 @@ import type {
   MoveSectionResult,
   SectionCopyTargetInput,
 } from './types.js';
-
-const BLOCK_METADATA_KEYS = new Set([
-  'block_id',
-  'parent_id',
-  'children',
-  'children_ids',
-  'document_id',
-  'revision_id',
-  'version',
-  'depth',
-  'deleted',
-  'create_time',
-  'created_time',
-  'update_time',
-  'updated_time',
-  'modified_time',
-  'page_id',
-  'page_token',
-  'parent_index',
-  'child_count',
-  'last_editor',
-  'creator',
-  'owner_id',
-]);
 
 export interface ResolvedSourceSection {
   sourceDocumentId: string;
@@ -187,7 +162,9 @@ export async function resolveTargetInsertion(
   defaultDocumentId: string,
   input: SectionCopyTargetInput,
 ): Promise<ResolvedTargetInsertion> {
-  const targetDocumentId = extractDocumentId(input.targetDocumentId ?? defaultDocumentId);
+  const targetDocumentId = runtime.notePlatformProvider.extractDocumentId(
+    input.targetDocumentId ?? defaultDocumentId,
+  );
   if (!targetDocumentId) {
     throw new Error('Invalid targetDocumentId or target document URL.');
   }
@@ -307,8 +284,8 @@ async function copySectionBlocks(
   input: SectionCopyTargetInput,
 ): Promise<CopyTreeResult> {
   for (const block of source.blocks) {
-    const blockType = block.block_type;
-    if (typeof blockType !== 'number') {
+    const blockType = runtime.notePlatformProvider.extractBlockType(block);
+    if (blockType === undefined) {
       throw new Error('Source block is missing block_type.');
     }
   }
@@ -409,9 +386,9 @@ async function copyBlockCollection(
     let copiedBlockCount = topLevelCreateResult.totalCreated;
 
     for (const [index, sourceBlock] of input.sourceBlocks.entries()) {
-      if (!blockHasChildren(sourceBlock)) continue;
-      const sourceBlockId = requireBlockId(sourceBlock);
-      const targetBlockId = requireBlockId(createdBlocks[index]);
+      if (runtime.notePlatformProvider.extractChildIds(sourceBlock).length === 0) continue;
+      const sourceBlockId = requireBlockId(runtime, sourceBlock);
+      const targetBlockId = requireBlockId(runtime, createdBlocks[index]);
       const sourceChildren = await runtime.documentBlockService.getAllChildren(
         input.sourceDocumentId,
         sourceBlockId,
@@ -495,7 +472,7 @@ async function createCopiedTopLevelBlocks(
 
   try {
     for (const block of input.sourceBlocks) {
-      if (isImageBlock(block)) {
+      if (runtime.notePlatformProvider.extractBlockKind(block) === 'image') {
         await flushPendingRun();
         const imageResult = await copyImageBlock(runtime, {
           sourceBlock: block,
@@ -510,7 +487,7 @@ async function createCopiedTopLevelBlocks(
         continue;
       }
       pendingSourceBlocks.push(block);
-      pendingChildren.push(sanitizeBlockPayload(block));
+      pendingChildren.push(runtime.notePlatformProvider.sanitizeBlockForCopy(block));
     }
 
     await flushPendingRun();
@@ -568,7 +545,7 @@ async function createRawCopiedBlockRun(
     createResult.totalCreated !== input.sourceBlocks.length
   ) {
     throw new Error(
-      `Create copied blocks failed: created=${createResult.totalCreated}, expected=${input.sourceBlocks.length}, failedChunks=${createResult.failedChunks}, sourceBlocks=${summarizeSourceBlocksForError(input.sourceBlocks)}.`,
+      `Create copied blocks failed: created=${createResult.totalCreated}, expected=${input.sourceBlocks.length}, failedChunks=${createResult.failedChunks}, sourceBlocks=${summarizeSourceBlocksForError(runtime, input.sourceBlocks)}.`,
     );
   }
 
@@ -588,14 +565,12 @@ async function copyImageBlock(
     targetDocumentRevisionId?: number;
   },
 ): Promise<{ imageBlockId: string }> {
-  const sourceToken = extractSourceImageToken(input.sourceBlock);
-  const sourceSize = extractSourceImageSize(input.sourceBlock);
-  const sourceBlockId = requireBlockId(input.sourceBlock);
-  const downloadResult = await runtime.feishuClient.requestBinary(
-    `/drive/v1/medias/${sourceToken}/download`,
-    'GET',
+  const sourceImage = runtime.notePlatformProvider.extractImageBlockData(input.sourceBlock);
+  const sourceBlockId = requireBlockId(runtime, input.sourceBlock);
+  const downloadResult = await runtime.notePlatformMediaGateway.downloadMediaByToken(
+    sourceImage.token,
   );
-  const fileName = resolveDownloadedImageFileName(downloadResult, sourceToken);
+  const fileName = resolveDownloadedImageFileName(downloadResult, sourceImage.token);
   const mimeType =
     normalizeDownloadedMimeType(downloadResult.contentType) ??
     inferMimeTypeFromFileName(fileName) ??
@@ -608,8 +583,8 @@ async function copyImageBlock(
       mimeType,
       parentBlockId: input.targetParentBlockId,
       index: input.insertIndex,
-      width: sourceSize.width,
-      height: sourceSize.height,
+      width: sourceImage.width,
+      height: sourceImage.height,
       documentRevisionId: input.targetDocumentRevisionId,
     });
     return { imageBlockId: uploadResult.imageBlockId };
@@ -622,79 +597,24 @@ async function copyImageBlock(
   }
 }
 
-function sanitizeBlockPayload(block: Record<string, unknown>): Record<string, unknown> {
-  const blockType = block.block_type;
-  if (typeof blockType !== 'number') {
-    throw new Error('Source block is missing block_type.');
-  }
-
-  const payload: Record<string, unknown> = { block_type: blockType };
-  for (const [key, value] of Object.entries(block)) {
-    if (key === 'block_type' || BLOCK_METADATA_KEYS.has(key)) continue;
-    if (value === undefined) continue;
-    payload[key] = structuredClone(value);
-  }
-  return payload;
-}
-
-function summarizeSourceBlocksForError(blocks: Array<Record<string, unknown>>): string {
+function summarizeSourceBlocksForError(
+  runtime: DocumentEditRuntime,
+  blocks: Array<Record<string, unknown>>,
+): string {
   const preview = blocks
     .slice(0, 5)
-    .map((block) => describeSourceBlock(block))
+    .map((block) => describeSourceBlock(runtime, block))
     .join(', ');
   return blocks.length > 5 ? `${preview}, ... total=${blocks.length}` : preview;
 }
 
-function describeSourceBlock(block: Record<string, unknown>): string {
-  const blockId =
-    typeof block.block_id === 'string' && block.block_id.trim().length > 0
-      ? block.block_id.trim()
-      : '<no-block-id>';
-  const blockType = extractBlockType(block);
-  return `${blockId}:${blockType ?? 'unknown'}`;
-}
-
-function extractBlockType(block: Record<string, unknown>): number | undefined {
-  return typeof block.block_type === 'number' ? block.block_type : undefined;
-}
-
-function isImageBlock(block: Record<string, unknown>): boolean {
-  return extractBlockType(block) === 27;
-}
-
-function extractSourceImageToken(block: Record<string, unknown>): string {
-  const image = block.image;
-  if (!image || typeof image !== 'object') {
-    throw new Error(`Image block is missing image payload: ${describeSourceBlock(block)}.`);
-  }
-  const token = (image as Record<string, unknown>).token;
-  if (typeof token === 'string' && token.trim().length > 0) {
-    return token.trim();
-  }
-  throw new Error(`Image block is missing image token: ${describeSourceBlock(block)}.`);
-}
-
-function extractSourceImageSize(
+function describeSourceBlock(
+  runtime: DocumentEditRuntime,
   block: Record<string, unknown>,
-): { width: number; height: number } {
-  const image = block.image;
-  if (!image || typeof image !== 'object') {
-    throw new Error(`Image block is missing image payload: ${describeSourceBlock(block)}.`);
-  }
-  const width = coercePositiveInt((image as Record<string, unknown>).width);
-  const height = coercePositiveInt((image as Record<string, unknown>).height);
-  if (!width || !height) {
-    throw new Error(`Image block is missing width/height: ${describeSourceBlock(block)}.`);
-  }
-  return { width, height };
-}
-
-function coercePositiveInt(value: unknown): number | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    return undefined;
-  }
-  const normalized = Math.floor(value);
-  return normalized > 0 ? normalized : undefined;
+): string {
+  const blockId = runtime.notePlatformProvider.extractBlockId(block) ?? '<no-block-id>';
+  const blockType = runtime.notePlatformProvider.extractBlockType(block);
+  return `${blockId}:${blockType ?? 'unknown'}`;
 }
 
 function resolveDownloadedImageFileName(
@@ -753,14 +673,13 @@ function inferImageExtensionFromContentType(contentType: string | undefined): st
   return undefined;
 }
 
-function blockHasChildren(block: Record<string, unknown>): boolean {
-  return Array.isArray(block.children) && block.children.length > 0;
-}
-
-function requireBlockId(block: Record<string, unknown>): string {
-  const blockId = block.block_id;
-  if (typeof blockId === 'string' && blockId.trim().length > 0) {
-    return blockId.trim();
+function requireBlockId(
+  runtime: DocumentEditRuntime,
+  block: Record<string, unknown>,
+): string {
+  const blockId = runtime.notePlatformProvider.extractBlockId(block);
+  if (blockId) {
+    return blockId;
   }
   throw new Error('Block is missing block_id.');
 }

@@ -18,7 +18,7 @@ import {
   resolveTableParentBlockId,
   resolveTableSnapshot,
 } from './tableSnapshots.js';
-import { buildTableBlock, normalizeTableSpec } from './tableSpecs.js';
+import { normalizeTableSpec } from './tableSpecs.js';
 
 export async function createTableCore(
   runtime: DocumentEditRuntime,
@@ -36,7 +36,12 @@ export async function createTableCore(
     documentId: normalizedDocumentId,
     parentBlockId,
     index: input.index,
-    children: [buildTableBlock(tableSpec.rowSize, tableSpec.columnSize)],
+    children: [
+      runtime.notePlatformProvider.buildTableBlock(
+        tableSpec.rowSize,
+        tableSpec.columnSize,
+      ),
+    ],
     documentRevisionId: input.documentRevisionId,
   });
 

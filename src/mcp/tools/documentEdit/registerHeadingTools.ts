@@ -24,7 +24,7 @@ const previewOperationSchema = z.enum([
 export function registerHeadingTools(server: McpServer, context: AppContext): void {
   server.tool(
     'copy_section',
-    'Copy one section by heading text/path and insert it into the same document or another document.',
+    'Copy one section by heading text/path and insert it into the same document or another document. This semantic editing workflow is platform-neutral in the service layer and currently runs on Feishu blocks.',
     {
       documentId: documentIdSchema(),
       ...headingLocatorFields({
@@ -95,7 +95,7 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
 
   server.tool(
     'move_section',
-    'Move one section by heading text/path within the same document or into another document.',
+    'Move one section by heading text/path within the same document or into another document. This semantic editing workflow is platform-neutral in the service layer and currently runs on Feishu blocks.',
     {
       documentId: documentIdSchema(),
       ...headingLocatorFields({
@@ -166,7 +166,7 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
 
   server.tool(
     'preview_edit_plan',
-    'Preview a semantic document edit plan without executing mutations. Returns matched headings, insertion positions, and blocks that would be deleted.',
+    'Preview a semantic document edit plan without executing mutations. Returns matched headings, insertion positions, and blocks that would be deleted. The planning layer is platform-neutral and the current runtime targets Feishu docs/wiki.',
     {
       operation: previewOperationSchema.describe(
         'Edit operation to preview.',
@@ -245,7 +245,7 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
 
   server.tool(
     'insert_before_heading',
-    'Locate a heading and insert rich-text blocks right before it in one call (progressive scan + insert).',
+    'Locate a heading and insert rich-text blocks right before it in one call (progressive scan + insert). This semantic editing workflow is platform-neutral in the service layer and currently runs on Feishu blocks.',
     {
       documentId: documentIdSchema(),
       ...headingLocatorFields({
@@ -299,7 +299,7 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
 
   server.tool(
     'locate_section_range',
-    'Locate one section range by heading text/path using progressive child-page scan, returning start/end indices for follow-up edits.',
+    'Locate one section range by heading text/path using progressive child-page scan, returning start/end indices for follow-up edits. The locator logic is platform-neutral in the service layer and currently runs on Feishu blocks.',
     {
       documentId: documentIdSchema(),
       ...headingLocatorFields({
@@ -326,7 +326,7 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
 
   server.tool(
     'replace_section_blocks',
-    'Replace one section content with rich-text blocks by heading text/path using progressive locate + atomic replace workflow.',
+    'Replace one section content with rich-text blocks by heading text/path using progressive locate + atomic replace workflow. This semantic editing workflow is platform-neutral in the service layer and currently runs on Feishu blocks.',
     {
       documentId: documentIdSchema(),
       ...headingLocatorFields({
@@ -380,7 +380,7 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
 
   server.tool(
     'upsert_section',
-    'Upsert one section by heading text/path: replace its content when found, or append a new heading+content section when missing.',
+    'Upsert one section by heading text/path: replace its content when found, or append a new heading+content section when missing. This semantic editing workflow is platform-neutral in the service layer and currently runs on Feishu blocks.',
     {
       documentId: documentIdSchema(),
       ...headingLocatorFields({
@@ -490,7 +490,7 @@ export function registerHeadingTools(server: McpServer, context: AppContext): vo
 
   server.tool(
     'replace_section_with_ordered_list',
-    'Replace one section content with Feishu native ordered-list blocks by heading text. Uses minimal block traversal and supports inline code spans with backticks.',
+    'Replace one section content with native ordered-list blocks of the current platform implementation by heading text. Today this creates Feishu ordered-list blocks and supports inline code spans with backticks.',
     {
       documentId: documentIdSchema(),
       ...headingLocatorFields({

@@ -1,5 +1,5 @@
 import type { AppConfig } from "../../config.js";
-import type { FeishuClient } from "../../feishu/client.js";
+import type { NotePlatformKnowledgeGateway } from "../../platform/index.js";
 import { TtlCache } from "../../utils/ttlCache.js";
 
 interface WikiNodeApi {
@@ -9,12 +9,6 @@ interface WikiNodeApi {
   has_child?: boolean;
   obj_type?: string;
   obj_token?: string;
-}
-
-interface WikiNodeListResponse {
-  items?: WikiNodeApi[];
-  has_more?: boolean;
-  page_token?: string;
 }
 
 export interface WikiTreeNode {
@@ -50,7 +44,7 @@ export class WikiTreeService {
   private readonly maxAllowedConcurrency: number;
 
   constructor(
-    private readonly feishuClient: FeishuClient,
+    private readonly knowledgeGateway: NotePlatformKnowledgeGateway,
     config: AppConfig["feishu"],
   ) {
     this.childNodeCache = new TtlCache<InternalNode[]>({
@@ -205,19 +199,14 @@ export class WikiTreeService {
     let hasMore = true;
 
     while (hasMore) {
-      const data = await this.feishuClient.request<WikiNodeListResponse>(
-        `/wiki/v2/spaces/${spaceId}/nodes`,
-        "GET",
-        undefined,
-        {
-          page_size: pageSize,
-          page_token: pageToken,
-          parent_node_token: parentNodeToken || undefined,
-        },
-      );
+      const page = await this.knowledgeGateway.listWikiNodes(spaceId, {
+        pageSize,
+        pageToken,
+        parentNodeToken: parentNodeToken || undefined,
+      });
 
-      if (Array.isArray(data.items) && data.items.length > 0) {
-        for (const item of data.items) {
+      if (page.items.length > 0) {
+        for (const item of page.items as WikiNodeApi[]) {
           const normalized = this.normalizeNode(item);
           if (normalized) {
             all.push(normalized);
@@ -225,13 +214,13 @@ export class WikiTreeService {
         }
       }
 
-      hasMore = Boolean(data.has_more);
-      if (hasMore && !data.page_token) {
+      hasMore = page.hasMore;
+      if (hasMore && !page.pageToken) {
         throw new Error(
-          "Feishu wiki tree pagination returned has_more=true without page_token.",
+          "Wiki tree pagination returned hasMore=true without pageToken.",
         );
       }
-      pageToken = data.page_token;
+      pageToken = page.pageToken;
     }
 
     return all;

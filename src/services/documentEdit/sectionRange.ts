@@ -1,3 +1,5 @@
+import type { NotePlatformProvider } from '../../platform/index.js';
+
 export interface SectionRange {
   startIndex: number;
   endIndex: number;
@@ -11,11 +13,12 @@ interface HeadingInfo {
 }
 
 export function findSectionRangeByHeadingText(
+  notePlatformProvider: NotePlatformProvider,
   siblings: Array<Record<string, unknown>>,
   sectionHeading: string,
   sectionOccurrence: number,
 ): SectionRange | null {
-  const headings = collectHeadings(siblings);
+  const headings = collectHeadings(notePlatformProvider, siblings);
   const candidates = headings.filter((item) => item.text === sectionHeading);
   if (candidates.length < sectionOccurrence) return null;
   const target = candidates[sectionOccurrence - 1];
@@ -28,11 +31,12 @@ export function findSectionRangeByHeadingText(
 }
 
 export function findSectionRangeByHeadingPath(
+  notePlatformProvider: NotePlatformProvider,
   siblings: Array<Record<string, unknown>>,
   headingPath: string[],
   sectionOccurrence: number,
 ): SectionRange | null {
-  const headings = collectHeadings(siblings);
+  const headings = collectHeadings(notePlatformProvider, siblings);
   if (headingPath.length === 0) return null;
 
   const matches = matchHeadingPath(headings, siblings.length, headingPath);
@@ -47,14 +51,15 @@ export function findSectionRangeByHeadingPath(
 }
 
 function collectHeadings(
+  notePlatformProvider: NotePlatformProvider,
   siblings: Array<Record<string, unknown>>,
 ): HeadingInfo[] {
   const headings: HeadingInfo[] = [];
   for (let i = 0; i < siblings.length; i += 1) {
     const block = siblings[i];
-    const level = extractHeadingLevel(block);
+    const level = notePlatformProvider.extractHeadingLevel(block);
     if (level === undefined) continue;
-    const text = extractBlockText(block);
+    const text = notePlatformProvider.extractBlockText(block);
     headings.push({ index: i, level, text });
   }
   return headings;
@@ -116,78 +121,4 @@ function computeSectionEndIndex(
     }
   }
   return totalSiblingCount;
-}
-
-function extractBlockType(block: Record<string, unknown>): number | undefined {
-  const value = block.block_type;
-  return typeof value === "number" ? value : undefined;
-}
-
-function extractHeadingLevel(block: Record<string, unknown>): number | undefined {
-  const keyToLevel: Array<[string, number]> = [
-    ["heading1", 1],
-    ["heading2", 2],
-    ["heading3", 3],
-    ["heading4", 4],
-    ["heading5", 5],
-    ["heading6", 6],
-    ["heading7", 7],
-    ["heading8", 8],
-    ["heading9", 9],
-  ];
-  for (const [key, level] of keyToLevel) {
-    if (key in block) return level;
-  }
-
-  const blockType = extractBlockType(block);
-  if (blockType === undefined) return undefined;
-  if (blockType >= 3 && blockType <= 11) {
-    return blockType - 2;
-  }
-  return undefined;
-}
-
-function extractBlockText(block: Record<string, unknown>): string {
-  const textContainer = extractTextContainer(block);
-  if (!textContainer) return "";
-  const elements = textContainer.elements;
-  if (!Array.isArray(elements)) return "";
-  let text = "";
-  for (const element of elements) {
-    if (!element || typeof element !== "object") continue;
-    const textRun = (element as Record<string, unknown>).text_run;
-    if (!textRun || typeof textRun !== "object") continue;
-    const content = (textRun as Record<string, unknown>).content;
-    if (typeof content === "string") {
-      text += content;
-    }
-  }
-  return text.trim();
-}
-
-function extractTextContainer(
-  block: Record<string, unknown>,
-): Record<string, unknown> | null {
-  const keys = [
-    "heading1",
-    "heading2",
-    "heading3",
-    "heading4",
-    "heading5",
-    "heading6",
-    "heading7",
-    "heading8",
-    "heading9",
-    "ordered",
-    "bullet",
-    "text",
-    "page",
-  ];
-  for (const key of keys) {
-    const value = block[key];
-    if (value && typeof value === "object") {
-      return value as Record<string, unknown>;
-    }
-  }
-  return null;
 }

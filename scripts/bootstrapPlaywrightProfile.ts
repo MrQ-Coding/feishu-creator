@@ -1,5 +1,5 @@
 import path from "node:path";
-import { bootstrapAutomationProfile } from "../src/services/playwrightProfileBootstrap.js";
+import { bootstrapAutomationProfile } from "../src/services/wikiBrowser/playwrightProfileBootstrap.js";
 
 interface Options {
   source: string;

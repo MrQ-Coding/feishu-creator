@@ -6,6 +6,8 @@ export type {
 
 export { DocumentCreateService } from "./createService.js";
 export type {
+  CreateDocumentInput,
+  CreateDocumentResult,
   CreateFeishuDocumentInput,
   CreateFeishuDocumentResult,
   CreateWikiContext,

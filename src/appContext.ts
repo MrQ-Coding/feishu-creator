@@ -3,6 +3,20 @@ import { FeishuAuthManager } from "./feishu/authManager.js";
 import { FeishuClient } from "./feishu/client.js";
 import { Logger } from "./logger.js";
 import {
+  FeishuNotePlatformDocumentGateway,
+  FeishuNotePlatformEditGateway,
+  FeishuNotePlatformKnowledgeGateway,
+  FeishuNotePlatformMarkdownGateway,
+  FeishuNotePlatformMediaGateway,
+  FeishuNotePlatformProvider,
+  type NotePlatformDocumentGateway,
+  type NotePlatformEditGateway,
+  type NotePlatformKnowledgeGateway,
+  type NotePlatformMarkdownGateway,
+  type NotePlatformMediaGateway,
+  type NotePlatformProvider,
+} from "./platform/index.js";
+import {
   DocumentBlockService,
   DocumentCreateService,
   DocumentInfoService,
@@ -16,6 +30,12 @@ import { WikiSpaceService, WikiTreeService } from "./services/wiki/index.js";
 
 export interface AppContext {
   config: AppConfig;
+  notePlatformProvider: NotePlatformProvider;
+  notePlatformDocumentGateway: NotePlatformDocumentGateway;
+  notePlatformKnowledgeGateway: NotePlatformKnowledgeGateway;
+  notePlatformEditGateway: NotePlatformEditGateway;
+  notePlatformMarkdownGateway: NotePlatformMarkdownGateway;
+  notePlatformMediaGateway: NotePlatformMediaGateway;
   authManager: FeishuAuthManager;
   feishuClient: FeishuClient;
   documentBlockService: DocumentBlockService;
@@ -31,21 +51,44 @@ export interface AppContext {
 }
 
 export function createAppContext(config: AppConfig): AppContext {
+  const notePlatformProvider = new FeishuNotePlatformProvider();
   const authManager = new FeishuAuthManager(config.feishu);
   const feishuClient = new FeishuClient(config.feishu, authManager);
-  const documentBlockService = new DocumentBlockService(feishuClient, config.feishu);
-  const documentInfoService = new DocumentInfoService(feishuClient, config.feishu);
-  const searchService = new SearchService(feishuClient);
-  const wikiSpaceService = new WikiSpaceService(feishuClient, config.feishu);
-  const wikiTreeService = new WikiTreeService(feishuClient, config.feishu);
+  const notePlatformDocumentGateway = new FeishuNotePlatformDocumentGateway(feishuClient);
+  const notePlatformKnowledgeGateway = new FeishuNotePlatformKnowledgeGateway(feishuClient);
+  const notePlatformEditGateway = new FeishuNotePlatformEditGateway(feishuClient);
+  const notePlatformMarkdownGateway = new FeishuNotePlatformMarkdownGateway();
+  const notePlatformMediaGateway = new FeishuNotePlatformMediaGateway(feishuClient);
+  const documentBlockService = new DocumentBlockService(
+    notePlatformDocumentGateway,
+    notePlatformProvider,
+    config.feishu,
+  );
+  const documentInfoService = new DocumentInfoService(
+    notePlatformDocumentGateway,
+    notePlatformProvider,
+    config.feishu,
+  );
+  const searchService = new SearchService(notePlatformKnowledgeGateway);
+  const wikiSpaceService = new WikiSpaceService(
+    notePlatformKnowledgeGateway,
+    config.feishu,
+  );
+  const wikiTreeService = new WikiTreeService(
+    notePlatformKnowledgeGateway,
+    config.feishu,
+  );
   const wikiBrowserDeletionService = new WikiBrowserDeletionService(config.feishu);
   const documentCreateService = new DocumentCreateService(
-    feishuClient,
+    notePlatformDocumentGateway,
     wikiSpaceService,
     wikiTreeService,
   );
   const documentEditService = new DocumentEditService(
-    feishuClient,
+    notePlatformDocumentGateway,
+    notePlatformEditGateway,
+    notePlatformMediaGateway,
+    notePlatformProvider,
     documentBlockService,
     documentInfoService,
     wikiBrowserDeletionService,
@@ -56,6 +99,8 @@ export function createAppContext(config: AppConfig): AppContext {
     config.feishu,
   );
   const markdownDocumentService = new MarkdownDocumentService(
+    notePlatformProvider,
+    notePlatformMarkdownGateway,
     documentBlockService,
     documentEditService,
   );
@@ -90,6 +135,12 @@ export function createAppContext(config: AppConfig): AppContext {
 
   return {
     config,
+    notePlatformProvider,
+    notePlatformDocumentGateway,
+    notePlatformKnowledgeGateway,
+    notePlatformEditGateway,
+    notePlatformMarkdownGateway,
+    notePlatformMediaGateway,
     authManager,
     feishuClient,
     documentBlockService,

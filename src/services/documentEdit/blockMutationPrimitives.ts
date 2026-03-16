@@ -16,7 +16,6 @@ import type {
   BatchCreateBlocksInput,
   BatchCreateBlocksResult,
   BatchCreateChunkResult,
-  CreateBlockChildrenResponse,
 } from './types.js';
 
 export async function batchCreateBlocksCore(
@@ -63,23 +62,17 @@ export async function batchCreateBlocksCore(
     const chunk = input.children.slice(cursor, cursor + effectiveChunkSize);
     const requestIndex = nextInsertIndex;
     const clientToken = buildClientToken(checkpointTokenSeed, cursor, chunk.length);
-    const requestBody: Record<string, unknown> = { children: chunk };
-    if (requestIndex !== undefined) {
-      requestBody.index = requestIndex;
-    }
-
     try {
-      const data = await runtime.feishuClient.request<CreateBlockChildrenResponse>(
-        `/docx/v1/documents/${normalizedDocumentId}/blocks/${parentBlockId}/children`,
-        'POST',
-        requestBody,
-        {
-          document_revision_id: currentRevisionId,
-          client_token: clientToken,
-        },
-      );
+      const data = await runtime.notePlatformEditGateway.createBlockChildren({
+        documentId: normalizedDocumentId,
+        parentBlockId,
+        children: chunk,
+        index: requestIndex,
+        documentRevisionId: currentRevisionId,
+        clientToken,
+      });
 
-      const createdChildren = Array.isArray(data.children) ? data.children : [];
+      const createdChildren = data.children;
       const createdCount = createdChildren.length;
       if (createdCount !== chunk.length) {
         throw new Error(
@@ -94,8 +87,8 @@ export async function batchCreateBlocksCore(
       if (nextInsertIndex !== undefined) {
         nextInsertIndex += createdCount;
       }
-      if (typeof data.document_revision_id === 'number') {
-        currentRevisionId = data.document_revision_id;
+      if (typeof data.documentRevisionId === 'number') {
+        currentRevisionId = data.documentRevisionId;
       }
 
       chunkResults.push({
@@ -105,9 +98,9 @@ export async function batchCreateBlocksCore(
         createdCount,
         index: requestIndex,
         attempt: chunkResults.length + 1,
-        clientToken: data.client_token ?? clientToken,
+        clientToken: data.clientToken ?? clientToken,
         status: 'success',
-        documentRevisionId: data.document_revision_id,
+        documentRevisionId: data.documentRevisionId,
       });
 
       if (adaptiveChunking && currentChunkSize < chunkSize && consecutiveSuccessCount >= 2) {
@@ -188,17 +181,13 @@ export async function deleteChildrenRange(
   documentRevisionId: number,
 ): Promise<void> {
   if (endIndex <= startIndex) return;
-  await runtime.feishuClient.request(
-    `/docx/v1/documents/${documentId}/blocks/${parentBlockId}/children/batch_delete`,
-    'DELETE',
-    {
-      start_index: startIndex,
-      end_index: endIndex,
-    },
-    {
-      document_revision_id: documentRevisionId,
-      client_token: randomUUID(),
-    },
-  );
+  await runtime.notePlatformEditGateway.deleteBlockChildrenRange({
+    documentId,
+    parentBlockId,
+    startIndex,
+    endIndex,
+    documentRevisionId,
+    clientToken: randomUUID(),
+  });
   runtime.invalidateDocumentState(documentId);
 }

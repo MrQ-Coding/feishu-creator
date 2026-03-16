@@ -1,8 +1,3 @@
-import {
-  detectDocumentType,
-  extractDocumentId,
-  extractWikiToken,
-} from '../../feishu/document.js';
 import type { DocumentEditRuntime } from './context.js';
 import { isNotFoundError } from './helpers.js';
 import type { DeleteDocumentInput, DeleteDocumentResult } from './types.js';
@@ -16,7 +11,8 @@ export async function deleteDocumentCore(
     throw new Error('documentId is required.');
   }
 
-  const sourceType = input.documentType ?? detectDocumentType(sourceDocumentId);
+  const sourceType =
+    input.documentType ?? runtime.notePlatformProvider.detectDocumentType(sourceDocumentId);
   const ignoreNotFound = input.ignoreNotFound ?? false;
 
   let deleteTarget: ResolvedBrowserDeleteTarget;
@@ -142,11 +138,11 @@ async function resolveBrowserDeleteTarget(
     );
     const nodeToken =
       pickString(wikiInfo, ['node_token', 'wiki_token']) ??
-      extractWikiToken(sourceDocumentId) ??
+      runtime.notePlatformProvider.extractWikiToken(sourceDocumentId) ??
       undefined;
     const documentId =
       pickString(wikiInfo, ['documentId', 'obj_token']) ??
-      extractDocumentId(sourceDocumentId) ??
+      runtime.notePlatformProvider.extractDocumentId(sourceDocumentId) ??
       undefined;
     const spaceId = pickString(wikiInfo, ['space_id']);
     const title = pickString(wikiInfo, ['title']);
@@ -170,7 +166,8 @@ async function resolveBrowserDeleteTarget(
     };
   }
 
-  const normalizedDocumentId = extractDocumentId(sourceDocumentId);
+  const normalizedDocumentId =
+    runtime.notePlatformProvider.extractDocumentId(sourceDocumentId);
   if (!normalizedDocumentId) {
     throw new Error('Invalid document ID or document URL.');
   }
@@ -179,7 +176,7 @@ async function resolveBrowserDeleteTarget(
   if (wikiInfo) {
     const nodeToken =
       pickString(wikiInfo, ['node_token', 'wiki_token']) ??
-      extractWikiToken(sourceDocumentId) ??
+      runtime.notePlatformProvider.extractWikiToken(sourceDocumentId) ??
       undefined;
     const documentId =
       pickString(wikiInfo, ['documentId', 'obj_token']) ?? normalizedDocumentId;
@@ -218,7 +215,7 @@ async function resolveDocumentId(
   sourceType: 'document' | 'wiki',
 ): Promise<string> {
   if (sourceType === 'document') {
-    const normalized = extractDocumentId(inputId);
+    const normalized = runtime.notePlatformProvider.extractDocumentId(inputId);
     if (normalized) {
       return normalized;
     }
@@ -258,7 +255,8 @@ async function tryResolveDocumentIdFromWikiNode(
         : typeof info.obj_token === 'string'
           ? info.obj_token
           : '';
-    const normalized = extractDocumentId(fromInfo) ?? fromInfo;
+    const normalized =
+      runtime.notePlatformProvider.extractDocumentId(fromInfo) ?? fromInfo;
     return normalized || null;
   } catch (error) {
     if (isNotFoundError(error)) {
@@ -272,7 +270,9 @@ async function tryResolveWikiInfo(
   runtime: DocumentEditRuntime,
   inputId: string,
 ): Promise<Record<string, unknown> | null> {
-  const looksLikeWiki = inputId.includes('/wiki/') || extractWikiToken(inputId) !== null;
+  const looksLikeWiki =
+    inputId.includes('/wiki/') ||
+    runtime.notePlatformProvider.extractWikiToken(inputId) !== null;
   if (!looksLikeWiki) {
     return null;
   }

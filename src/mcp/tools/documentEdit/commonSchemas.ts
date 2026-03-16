@@ -4,7 +4,7 @@ export function documentIdSchema() {
   return z
     .string()
     .describe(
-      'Document ID or URL. Examples: https://xxx.feishu.cn/docx/xxx or raw document id.',
+      'Document ID or URL for the current platform implementation. Today this accepts Feishu doc/wiki URLs or raw document IDs.',
     );
 }
 

@@ -1,8 +1,3 @@
-import {
-  buildHeadingBlock,
-  buildOrderedBlock,
-  buildRichTextChildren,
-} from './richTextBlocks.js';
 import type { DocumentEditRuntime } from './context.js';
 import {
   clampPageSize,
@@ -40,10 +35,14 @@ export async function insertBeforeHeadingCore(
   }
 
   const target = await resolveHeadingTarget(runtime, normalizedDocumentId, input);
-  const { children, typeCounts } = buildRichTextChildren(input.blocks, {
-    normalizeHeadingLevel,
-    normalizeCodeLanguage: (value) => normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
-  });
+  const { children, typeCounts } = runtime.notePlatformProvider.buildRichTextChildren(
+    input.blocks,
+    {
+      normalizeHeadingLevel,
+      normalizeCodeLanguage: (value) =>
+        normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
+    },
+  );
   const insertIndex = Math.max(0, target.locateResult.range.startIndex - 1);
   const result = await batchCreateBlocksCore(runtime, normalizedDocumentId, {
     documentId: normalizedDocumentId,
@@ -82,10 +81,14 @@ export async function replaceSectionBlocksCore(
   const target = await resolveHeadingTarget(runtime, normalizedDocumentId, input);
   const range = target.locateResult.range;
 
-  const { children, typeCounts } = buildRichTextChildren(input.blocks, {
-    normalizeHeadingLevel,
-    normalizeCodeLanguage: (value) => normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
-  });
+  const { children, typeCounts } = runtime.notePlatformProvider.buildRichTextChildren(
+    input.blocks,
+    {
+      normalizeHeadingLevel,
+      normalizeCodeLanguage: (value) =>
+        normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
+    },
+  );
   const createResult = await replaceSectionContent(
     runtime,
     normalizedDocumentId,
@@ -139,10 +142,14 @@ export async function upsertSectionCore(
     pageSize,
   });
 
-  const { children, typeCounts } = buildRichTextChildren(input.blocks, {
-    normalizeHeadingLevel,
-    normalizeCodeLanguage: (value) => normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
-  });
+  const { children, typeCounts } = runtime.notePlatformProvider.buildRichTextChildren(
+    input.blocks,
+    {
+      normalizeHeadingLevel,
+      normalizeCodeLanguage: (value) =>
+        normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
+    },
+  );
 
   if (locateResult) {
     const range = locateResult.range;
@@ -232,7 +239,9 @@ export async function replaceSectionWithOrderedListCore(
 
   const target = await resolveHeadingTarget(runtime, normalizedDocumentId, input);
   const range = target.locateResult.range;
-  const children = items.map((text) => buildOrderedBlock(text));
+  const children = items.map((text) =>
+    runtime.notePlatformProvider.buildOrderedBlock(text),
+  );
   const createResult = await batchCreateBlocksCore(runtime, normalizedDocumentId, {
     documentId: normalizedDocumentId,
     parentBlockId: target.parentBlockId,
@@ -396,7 +405,10 @@ async function createNewSection(
     documentRevisionId?: number;
   },
 ) {
-  const children = [buildHeadingBlock(headingLevel, sectionHeading), ...contentChildren];
+  const children = [
+    runtime.notePlatformProvider.buildHeadingBlock(headingLevel, sectionHeading),
+    ...contentChildren,
+  ];
   const createResult = await batchCreateBlocksCore(runtime, normalizedDocumentId, {
     documentId: normalizedDocumentId,
     parentBlockId,

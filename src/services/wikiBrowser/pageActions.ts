@@ -64,15 +64,21 @@ export async function navigateToWikiPage(
   let lastError: unknown;
   const timeout = Math.max(actionTimeoutMs * 2, 30000);
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       await page.goto(wikiUrl, {
         waitUntil: "domcontentloaded",
         timeout,
       });
+      await page.waitForLoadState("domcontentloaded", {
+        timeout: Math.min(actionTimeoutMs, 5000),
+      }).catch(() => undefined);
       return;
     } catch (error) {
       lastError = error;
+      if (attempt < 2) {
+        await page.waitForTimeout(250 * (attempt + 1));
+      }
     }
   }
 

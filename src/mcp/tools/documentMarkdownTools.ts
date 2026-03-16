@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { AppContext } from '../../appContext.js';
+import { registerAliasedTool } from './registerAliasedTool.js';
 import { errorToolResult, jsonToolResult } from './toolResponse.js';
 import {
   chunkedWriteFields,
@@ -13,69 +14,98 @@ export function registerDocumentMarkdownTools(
   server: McpServer,
   context: AppContext,
 ): void {
-  server.tool(
-    'import_markdown_to_feishu',
-    'Parse minimal Markdown and append the resulting blocks into a Feishu doc or wiki docx. Supports headings, paragraphs, ordered lists, bullet lists, quotes, fenced code blocks, and inline code spans.',
-    {
-      documentId: documentIdSchema(),
-      parentBlockId: optionalParentBlockIdSchema(),
-      index: optionalIndexSchema(),
-      markdown: z.string().min(1).describe('Markdown source text to import.'),
-      ...chunkedWriteFields({
-        resumeDescription: 'Skip the first N generated children, used for checkpoint resume.',
-      }),
-    },
-    async ({
-      documentId,
-      parentBlockId,
-      index,
-      markdown,
-      chunkSize,
-      minChunkSize,
-      adaptiveChunking,
-      resumeFromCreatedCount,
-      checkpointTokenSeed,
-      documentRevisionId,
-      continueOnError,
-    }) => {
-      try {
-        const result = await context.markdownDocumentService.importMarkdown({
-          documentId,
-          parentBlockId,
-          index,
-          markdown,
-          chunkSize,
-          minChunkSize,
-          adaptiveChunking,
-          resumeFromCreatedCount,
-          checkpointTokenSeed,
-          documentRevisionId,
-          continueOnError,
-        });
-        return jsonToolResult(result);
-      } catch (error) {
-        return errorToolResult('import_markdown_to_feishu', error);
-      }
-    },
+  const importMarkdownSchema = {
+    documentId: documentIdSchema(),
+    parentBlockId: optionalParentBlockIdSchema(),
+    index: optionalIndexSchema(),
+    markdown: z.string().min(1).describe('Markdown source text to import.'),
+    ...chunkedWriteFields({
+      resumeDescription: 'Skip the first N generated children, used for checkpoint resume.',
+    }),
+  };
+  const handleImportMarkdown = async ({
+    documentId,
+    parentBlockId,
+    index,
+    markdown,
+    chunkSize,
+    minChunkSize,
+    adaptiveChunking,
+    resumeFromCreatedCount,
+    checkpointTokenSeed,
+    documentRevisionId,
+    continueOnError,
+  }: z.infer<z.ZodObject<typeof importMarkdownSchema>>) => {
+    try {
+      const result = await context.markdownDocumentService.importMarkdown({
+        documentId,
+        parentBlockId,
+        index,
+        markdown,
+        chunkSize,
+        minChunkSize,
+        adaptiveChunking,
+        resumeFromCreatedCount,
+        checkpointTokenSeed,
+        documentRevisionId,
+        continueOnError,
+      });
+      return jsonToolResult(result);
+    } catch (error) {
+      return errorToolResult('import_markdown_to_document', error);
+    }
+  };
+  registerAliasedTool(
+    server,
+    [
+      {
+        name: 'import_markdown_to_document',
+        description:
+          'Import minimal Markdown into a document subtree of the current platform implementation. This Markdown-to-block workflow is platform-neutral in the service layer and is currently backed by Feishu doc/wiki blocks.',
+      },
+      {
+        name: 'import_markdown_to_feishu',
+        description:
+          'Legacy Feishu-named alias for Markdown import. This is a platform-neutral Markdown-to-block workflow in the service layer and is currently backed by Feishu doc/wiki blocks.',
+      },
+    ],
+    importMarkdownSchema,
+    handleImportMarkdown,
   );
 
-  server.tool(
-    'export_feishu_document_to_markdown',
-    'Export a Feishu doc or wiki docx subtree to minimal Markdown. Supports headings, paragraphs, ordered lists, bullet lists, quotes, code blocks, and common inline styles.',
-    {
-      documentId: documentIdSchema(),
-      parentBlockId: optionalParentBlockIdSchema(),
-    },
-    async ({ documentId, parentBlockId }) => {
-      try {
-        const result = await context.markdownDocumentService.exportMarkdown({
-          documentId,
-          parentBlockId,
-        });
-        return jsonToolResult(result);
-      } catch (error) {
-        return errorToolResult('export_feishu_document_to_markdown', error);
-      }
-    },
+  const exportMarkdownSchema = {
+    documentId: documentIdSchema(),
+    parentBlockId: optionalParentBlockIdSchema(),
+  };
+  const handleExportMarkdown = async ({
+    documentId,
+    parentBlockId,
+  }: z.infer<z.ZodObject<typeof exportMarkdownSchema>>) => {
+    try {
+      const result = await context.markdownDocumentService.exportMarkdown({
+        documentId,
+        parentBlockId,
+      });
+      return jsonToolResult(result);
+    } catch (error) {
+      return errorToolResult('export_document_to_markdown', error);
+    }
+  };
+  registerAliasedTool(
+    server,
+    [
+      {
+        name: 'export_document_to_markdown',
+        description:
+          'Export a document subtree of the current platform implementation to minimal Markdown. This block-to-Markdown workflow is platform-neutral in the service layer and is currently backed by Feishu doc/wiki blocks.',
+      },
+      {
+        name: 'export_feishu_document_to_markdown',
+        description:
+          'Legacy Feishu-named alias for Markdown export. This is a platform-neutral block-to-Markdown workflow in the service layer and is currently backed by Feishu doc/wiki blocks.',
+      },
+    ],
+    exportMarkdownSchema,
+    handleExportMarkdown,
   );
 }

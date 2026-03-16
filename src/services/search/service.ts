@@ -1,4 +1,4 @@
-import type { FeishuClient } from "../../feishu/client.js";
+import type { NotePlatformKnowledgeGateway } from "../../platform/index.js";
 
 export type SearchType = "document" | "wiki" | "both";
 type AuthType = "tenant" | "user";
@@ -10,17 +10,6 @@ interface SearchInput {
   pageToken?: string;
   spaceId?: string;
   authType: AuthType;
-}
-
-interface DocumentSearchApiResponse {
-  docs_entities?: Array<Record<string, unknown>>;
-  has_more?: boolean;
-}
-
-interface WikiSearchApiResponse {
-  items?: Array<Record<string, unknown>>;
-  has_more?: boolean;
-  page_token?: string;
 }
 
 interface SearchPageGuide {
@@ -58,7 +47,7 @@ export class SearchService {
   private static readonly DOCUMENT_PAGE_SIZE = 50;
   private static readonly WIKI_PAGE_SIZE = 20;
 
-  constructor(private readonly feishuClient: FeishuClient) {}
+  constructor(private readonly knowledgeGateway: NotePlatformKnowledgeGateway) {}
 
   async search(input: SearchInput): Promise<SearchResult> {
     const searchKey = this.normalizeRequired(input.searchKey, "searchKey");
@@ -147,21 +136,15 @@ export class SearchService {
     let hasMore = true;
 
     while (hasMore && items.length < maxItems) {
-      const data = await this.feishuClient.request<DocumentSearchApiResponse>(
-        "/suite/docs-api/search/object",
-        "POST",
-        {
-          search_key: searchKey,
-          docs_types: ["doc"],
-          count: SearchService.DOCUMENT_PAGE_SIZE,
-          offset: currentOffset,
-        },
-      );
-
-      const pageItems = Array.isArray(data.docs_entities) ? data.docs_entities : [];
+      const page = await this.knowledgeGateway.searchDocuments({
+        searchKey,
+        count: SearchService.DOCUMENT_PAGE_SIZE,
+        offset: currentOffset,
+      });
+      const pageItems = page.items;
       items.push(...pageItems.map((item) => this.standardizeDocumentItem(item)));
       currentOffset += pageItems.length;
-      hasMore = Boolean(data.has_more) && pageItems.length > 0;
+      hasMore = page.hasMore && pageItems.length > 0;
 
       if (items.length >= maxItems) {
         break;
@@ -190,20 +173,15 @@ export class SearchService {
 
     while (hasMore && items.length < maxItems) {
       const pageSize = Math.min(SearchService.WIKI_PAGE_SIZE, maxItems - items.length);
-      const data = await this.feishuClient.request<WikiSearchApiResponse>(
-        "/wiki/v1/nodes/search",
-        "POST",
-        { query },
-        {
-          page_size: pageSize,
-          page_token: currentPageToken,
-        },
-      );
-
-      const pageItems = Array.isArray(data.items) ? data.items : [];
+      const page = await this.knowledgeGateway.searchWikiNodes({
+        query,
+        pageSize,
+        pageToken: currentPageToken,
+      });
+      const pageItems = page.items;
       items.push(...pageItems.map((item) => this.standardizeWikiItem(item)));
-      currentPageToken = this.normalizeOptional(data.page_token);
-      hasMore = Boolean(data.has_more) && pageItems.length > 0;
+      currentPageToken = this.normalizeOptional(page.pageToken);
+      hasMore = page.hasMore && pageItems.length > 0;
 
       if (items.length >= maxItems) {
         break;

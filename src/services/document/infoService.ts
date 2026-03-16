@@ -1,10 +1,8 @@
 import type { AppConfig } from "../../config.js";
-import type { FeishuClient } from "../../feishu/client.js";
-import {
-  detectDocumentType,
-  extractDocumentId,
-  extractWikiToken,
-} from "../../feishu/document.js";
+import type {
+  NotePlatformDocumentGateway,
+  NotePlatformProvider,
+} from "../../platform/index.js";
 import { TtlCache } from "../../utils/ttlCache.js";
 
 export interface GetDocumentInfoOptions {
@@ -15,7 +13,8 @@ export class DocumentInfoService {
   private readonly cache: TtlCache<Record<string, unknown>>;
 
   constructor(
-    private readonly feishuClient: FeishuClient,
+    private readonly documentGateway: NotePlatformDocumentGateway,
+    private readonly notePlatformProvider: NotePlatformProvider,
     config: AppConfig["feishu"],
   ) {
     this.cache = new TtlCache<Record<string, unknown>>({
@@ -29,9 +28,9 @@ export class DocumentInfoService {
     documentType?: "document" | "wiki",
     options?: GetDocumentInfoOptions,
   ): Promise<Record<string, unknown>> {
-    const type = documentType ?? detectDocumentType(documentId);
+    const type = documentType ?? this.notePlatformProvider.detectDocumentType(documentId);
     if (type === "wiki") {
-      const wikiToken = extractWikiToken(documentId);
+      const wikiToken = this.notePlatformProvider.extractWikiToken(documentId);
       if (!wikiToken) {
         throw new Error("Invalid wiki token or wiki URL.");
       }
@@ -44,7 +43,7 @@ export class DocumentInfoService {
       return this.cache.getOrLoad(key, load);
     }
 
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId = this.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) {
       throw new Error("Invalid document ID or document URL.");
     }
@@ -62,13 +61,13 @@ export class DocumentInfoService {
   }
 
   invalidateDocument(documentId: string): void {
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId = this.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) return;
     this.cache.delete(this.buildCacheKey("document", normalizedDocumentId));
   }
 
   invalidateWiki(wikiTokenOrUrl: string): void {
-    const wikiToken = extractWikiToken(wikiTokenOrUrl);
+    const wikiToken = this.notePlatformProvider.extractWikiToken(wikiTokenOrUrl);
     if (!wikiToken) return;
     this.cache.delete(this.buildCacheKey("wiki", wikiToken));
   }
@@ -89,26 +88,16 @@ export class DocumentInfoService {
     wikiToken: string,
     authTypeOverride?: "tenant" | "user",
   ): Promise<Record<string, unknown>> {
-    const data = await this.feishuClient.request<{
-      node?: Record<string, unknown> & { obj_token?: string };
-    }>(
-      "/wiki/v2/spaces/get_node",
-      "GET",
-      undefined,
-      {
-        token: wikiToken,
-        obj_type: "wiki",
-      },
-      {
-        authTypeOverride,
-      },
+    const { node } = await this.documentGateway.getWikiInfo(
+      wikiToken,
+      authTypeOverride,
     );
-    if (!data.node || !data.node.obj_token) {
+    if (!node.obj_token) {
       throw new Error("Wiki node response missing obj_token.");
     }
     return {
-      ...data.node,
-      documentId: data.node.obj_token,
+      ...node,
+      documentId: node.obj_token,
       _type: "wiki",
     };
   }
@@ -117,14 +106,9 @@ export class DocumentInfoService {
     documentId: string,
     authTypeOverride?: "tenant" | "user",
   ): Promise<Record<string, unknown>> {
-    const data = await this.feishuClient.request<Record<string, unknown>>(
-      `/docx/v1/documents/${documentId}`,
-      "GET",
-      undefined,
-      undefined,
-      {
-        authTypeOverride,
-      },
+    const { document: data } = await this.documentGateway.getDocumentInfo(
+      documentId,
+      authTypeOverride,
     );
     return {
       ...data,

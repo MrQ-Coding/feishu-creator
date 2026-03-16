@@ -1,6 +1,10 @@
 import type { AppConfig } from '../../config.js';
-import { detectDocumentType, extractDocumentId } from '../../feishu/document.js';
-import type { FeishuClient } from '../../feishu/client.js';
+import type {
+  NotePlatformDocumentGateway,
+  NotePlatformEditGateway,
+  NotePlatformMediaGateway,
+  NotePlatformProvider,
+} from '../../platform/index.js';
 import type { DocumentBlockService, DocumentInfoService } from '../document/index.js';
 import type { WikiBrowserDeletionService } from '../wikiBrowser/index.js';
 import { TtlCache } from '../../utils/ttlCache.js';
@@ -138,7 +142,10 @@ export class DocumentEditService {
   private readonly runtime: DocumentEditRuntime;
 
   constructor(
-    feishuClient: FeishuClient,
+    notePlatformDocumentGateway: NotePlatformDocumentGateway,
+    notePlatformEditGateway: NotePlatformEditGateway,
+    notePlatformMediaGateway: NotePlatformMediaGateway,
+    notePlatformProvider: NotePlatformProvider,
     documentBlockService: DocumentBlockService,
     documentInfoService: DocumentInfoService,
     wikiBrowserDeletionService: WikiBrowserDeletionService,
@@ -151,7 +158,10 @@ export class DocumentEditService {
 
     this.runtime = {
       config,
-      feishuClient,
+      notePlatformProvider,
+      notePlatformDocumentGateway,
+      notePlatformEditGateway,
+      notePlatformMediaGateway,
       documentBlockService,
       documentInfoService,
       wikiBrowserDeletionService,
@@ -282,12 +292,17 @@ export class DocumentEditService {
       throw new Error('documentId is required.');
     }
 
-    const sourceType = input.documentType ?? detectDocumentType(sourceDocumentId);
+    const sourceType =
+      input.documentType ?? this.runtime.notePlatformProvider.detectDocumentType(sourceDocumentId);
     const normalizedDocumentId = await resolveDocumentIdForDelete(
       this.runtime,
       sourceDocumentId,
       sourceType,
-    ).catch(() => extractDocumentId(sourceDocumentId) ?? sourceDocumentId);
+    ).catch(
+      () =>
+        this.runtime.notePlatformProvider.extractDocumentId(sourceDocumentId) ??
+        sourceDocumentId,
+    );
     return this.withDocumentLock(normalizedDocumentId, () =>
       deleteDocumentCore(this.runtime, input),
     );
@@ -429,7 +444,8 @@ export class DocumentEditService {
   }
 
   private requireDocumentId(documentId: string): string {
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId =
+      this.runtime.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) {
       throw new Error('Invalid document ID or document URL.');
     }

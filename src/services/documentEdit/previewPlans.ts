@@ -6,7 +6,7 @@ import {
   normalizeOptionalNonNegativeInt,
   normalizeTextItems,
 } from './helpers.js';
-import { buildRichTextChildren, type RichTextBlockSpec } from './richTextBlocks.js';
+import type { RichTextBlockSpec } from './richTextBlocks.js';
 import {
   computeMoveDeleteRange,
   resolveSourceSection,
@@ -57,10 +57,14 @@ async function previewInsertBeforeHeading(
 ): Promise<PreviewEditPlanResult> {
   const typedInput = input as PreviewEditPlanInput & InsertBeforeHeadingInput;
   const target = await resolveHeadingTarget(runtime, normalizedDocumentId, typedInput);
-  const { children, typeCounts } = buildRichTextChildren(typedInput.blocks ?? [], {
-    normalizeHeadingLevel,
-    normalizeCodeLanguage: (value) => normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
-  });
+  const { children, typeCounts } = runtime.notePlatformProvider.buildRichTextChildren(
+    typedInput.blocks ?? [],
+    {
+      normalizeHeadingLevel,
+      normalizeCodeLanguage: (value) =>
+        normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
+    },
+  );
   const insertIndex = Math.max(0, target.locateResult.range.startIndex - 1);
 
   return {
@@ -87,13 +91,22 @@ async function previewReplaceSectionBlocks(
 ): Promise<PreviewEditPlanResult> {
   const typedInput = input as PreviewEditPlanInput & ReplaceSectionBlocksInput;
   const target = await resolveHeadingTarget(runtime, normalizedDocumentId, typedInput);
-  const { children, typeCounts } = buildRichTextChildren(typedInput.blocks ?? [], {
-    normalizeHeadingLevel,
-    normalizeCodeLanguage: (value) => normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
-  });
+  const { children, typeCounts } = runtime.notePlatformProvider.buildRichTextChildren(
+    typedInput.blocks ?? [],
+    {
+      normalizeHeadingLevel,
+      normalizeCodeLanguage: (value) =>
+        normalizeOptionalNonNegativeInt(value, 'codeLanguage'),
+    },
+  );
   const siblings = await getSiblings(runtime, normalizedDocumentId, target.parentBlockId, typedInput.pageSize, target.locateResult.siblings);
   const range = target.locateResult.range;
-  const currentBlocks = summarizeExistingBlocks(siblings, range.startIndex, range.endIndex);
+  const currentBlocks = summarizeExistingBlocks(
+    runtime,
+    siblings,
+    range.startIndex,
+    range.endIndex,
+  );
 
   return {
     dryRun: true,
@@ -140,7 +153,12 @@ async function previewReplaceSectionWithOrderedList(
 
   const siblings = await getSiblings(runtime, normalizedDocumentId, target.parentBlockId, typedInput.pageSize, target.locateResult.siblings);
   const range = target.locateResult.range;
-  const currentBlocks = summarizeExistingBlocks(siblings, range.startIndex, range.endIndex);
+  const currentBlocks = summarizeExistingBlocks(
+    runtime,
+    siblings,
+    range.startIndex,
+    range.endIndex,
+  );
 
   return {
     dryRun: true,
@@ -185,7 +203,7 @@ async function previewDeleteByHeading(
   const includeHeading = Boolean(typedInput.includeHeading);
   const startIndex = includeHeading ? Math.max(0, range.startIndex - 1) : range.startIndex;
   const endIndex = range.endIndex;
-  const blocks = summarizeExistingBlocks(siblings, startIndex, endIndex);
+  const blocks = summarizeExistingBlocks(runtime, siblings, startIndex, endIndex);
 
   return {
     dryRun: true,
@@ -220,6 +238,7 @@ async function previewCopySection(
     source.blocks,
   );
   const sourceBlocks = summarizeExistingBlocks(
+    runtime,
     source.blocks,
     0,
     source.blocks.length,
@@ -245,7 +264,12 @@ async function previewCopySection(
         textPreview: block.textPreview,
       })),
     },
-    warnings: buildCopyWarnings(source.blocks, source.blocks.length, estimatedCopiedBlockCount),
+    warnings: buildCopyWarnings(
+      runtime,
+      source.blocks,
+      source.blocks.length,
+      estimatedCopiedBlockCount,
+    ),
   };
 }
 
@@ -263,6 +287,7 @@ async function previewMoveSection(
     source.blocks,
   );
   const sourceBlocks = summarizeExistingBlocks(
+    runtime,
     source.blocks,
     0,
     source.blocks.length,
@@ -303,7 +328,12 @@ async function previewMoveSection(
           ? 'The original section is deleted in place after the copy succeeds.'
           : 'Because the section is inserted before its current position in the same parent, the live delete indices shift forward after insertion.',
     },
-    warnings: buildCopyWarnings(source.blocks, source.blocks.length, estimatedCopiedBlockCount),
+    warnings: buildCopyWarnings(
+      runtime,
+      source.blocks,
+      source.blocks.length,
+      estimatedCopiedBlockCount,
+    ),
   };
 }
 
@@ -370,18 +400,19 @@ async function getSiblings(
 }
 
 function summarizeExistingBlocks(
+  runtime: DocumentEditRuntime,
   blocks: Array<Record<string, unknown>>,
   startIndex: number,
   endIndex: number,
   indexOffset = 0,
 ): PreviewBlockSummary[] {
   return blocks.slice(startIndex, endIndex).map((block, offset) => ({
-    blockId: typeof block.block_id === 'string' ? block.block_id : undefined,
+    blockId: runtime.notePlatformProvider.extractBlockId(block),
     index: indexOffset + startIndex + offset,
-    blockType: detectExistingBlockType(block),
-    textPreview: extractBlockText(block).slice(0, 160),
-    hasChildren: Array.isArray(block.children) && block.children.length > 0,
-    childCount: Array.isArray(block.children) ? block.children.length : 0,
+    blockType: detectExistingBlockType(runtime, block),
+    textPreview: runtime.notePlatformProvider.extractBlockText(block).slice(0, 160),
+    hasChildren: runtime.notePlatformProvider.extractChildIds(block).length > 0,
+    childCount: runtime.notePlatformProvider.extractChildIds(block).length,
   }));
 }
 
@@ -412,10 +443,11 @@ async function estimateBlockTreeSize(
 ): Promise<number> {
   let total = blocks.length;
   for (const block of blocks) {
-    if (!Array.isArray(block.children) || block.children.length === 0) {
+    const childIds = runtime.notePlatformProvider.extractChildIds(block);
+    if (childIds.length === 0) {
       continue;
     }
-    const blockId = typeof block.block_id === 'string' ? block.block_id.trim() : '';
+    const blockId = runtime.notePlatformProvider.extractBlockId(block) ?? '';
     if (!blockId) {
       continue;
     }
@@ -426,6 +458,7 @@ async function estimateBlockTreeSize(
 }
 
 function buildCopyWarnings(
+  runtime: DocumentEditRuntime,
   sourceBlocks: Array<Record<string, unknown>>,
   topLevelBlockCount: number,
   estimatedCopiedBlockCount: number,
@@ -436,7 +469,9 @@ function buildCopyWarnings(
       `The section contains nested child blocks. Top-level blocks=${topLevelBlockCount}, estimated total copied blocks=${estimatedCopiedBlockCount}.`,
     );
   }
-  const imageCount = sourceBlocks.filter((block) => detectExistingBlockType(block) === 'image').length;
+  const imageCount = sourceBlocks.filter(
+    (block) => detectExistingBlockType(runtime, block) === 'image',
+  ).length;
   if (imageCount > 0) {
     warnings.push(
       `The section contains ${imageCount} image block(s). copy_section/move_section will download the source image bytes and re-upload them into the target document, so copied images receive new file tokens and may take longer than plain-text transfers.`,
@@ -446,30 +481,23 @@ function buildCopyWarnings(
 }
 
 function detectExistingBlockType(
+  runtime: DocumentEditRuntime,
   block: Record<string, unknown>,
 ): PreviewBlockSummary['blockType'] {
-  const blockType = typeof block.block_type === 'number' ? block.block_type : undefined;
-  if (blockType !== undefined) {
-    if (blockType >= 3 && blockType <= 11) return 'heading';
-    if (blockType === 2) return 'text';
-    if (blockType === 12) return 'bullet';
-    if (blockType === 13) return 'ordered';
-    if (blockType === 14) return 'code';
-    if (blockType === 15) return 'quote';
-    if (blockType === 27) return 'image';
-    if (blockType === 1) return 'page';
-    return blockType;
+  const kind = runtime.notePlatformProvider.extractBlockKind(block);
+  if (
+    kind === 'heading' ||
+    kind === 'text' ||
+    kind === 'bullet' ||
+    kind === 'ordered' ||
+    kind === 'code' ||
+    kind === 'quote' ||
+    kind === 'image' ||
+    kind === 'page'
+  ) {
+    return kind;
   }
-
-  if (hasObjectField(block, 'text')) return 'text';
-  if (hasObjectField(block, 'ordered')) return 'ordered';
-  if (hasObjectField(block, 'bullet')) return 'bullet';
-  if (hasObjectField(block, 'quote')) return 'quote';
-  if (hasObjectField(block, 'code')) return 'code';
-  if (hasObjectField(block, 'image')) return 'image';
-  if (hasObjectField(block, 'page')) return 'page';
-  if (hasHeadingField(block)) return 'heading';
-  return 'unknown';
+  return runtime.notePlatformProvider.extractBlockType(block) ?? 'unknown';
 }
 
 function existingBlockTypeToCreateType(
@@ -487,61 +515,4 @@ function existingBlockTypeToCreateType(
     return blockType;
   }
   return 'text';
-}
-
-function hasHeadingField(block: Record<string, unknown>): boolean {
-  for (let level = 1; level <= 9; level += 1) {
-    if (hasObjectField(block, `heading${level}`)) return true;
-  }
-  return false;
-}
-
-function hasObjectField(block: Record<string, unknown>, key: string): boolean {
-  return Boolean(block[key] && typeof block[key] === 'object');
-}
-
-function extractBlockText(block: Record<string, unknown>): string {
-  const textContainer = extractTextContainer(block);
-  if (!textContainer) return '';
-  const elements = textContainer.elements;
-  if (!Array.isArray(elements)) return '';
-  let text = '';
-  for (const element of elements) {
-    if (!element || typeof element !== 'object') continue;
-    const textRun = (element as Record<string, unknown>).text_run;
-    if (!textRun || typeof textRun !== 'object') continue;
-    const content = (textRun as Record<string, unknown>).content;
-    if (typeof content === 'string') {
-      text += content;
-    }
-  }
-  return text.trim();
-}
-
-function extractTextContainer(
-  block: Record<string, unknown>,
-): Record<string, unknown> | null {
-  const keys = [
-    'heading1',
-    'heading2',
-    'heading3',
-    'heading4',
-    'heading5',
-    'heading6',
-    'heading7',
-    'heading8',
-    'heading9',
-    'ordered',
-    'bullet',
-    'quote',
-    'code',
-    'text',
-    'page',
-  ];
-  for (const key of keys) {
-    if (block[key] && typeof block[key] === 'object') {
-      return block[key] as Record<string, unknown>;
-    }
-  }
-  return null;
 }

@@ -1,5 +1,5 @@
 import type { AppConfig } from "../../config.js";
-import type { FeishuClient } from "../../feishu/client.js";
+import type { NotePlatformKnowledgeGateway } from "../../platform/index.js";
 import { TtlCache } from "../../utils/ttlCache.js";
 
 export class WikiSpaceService {
@@ -7,7 +7,7 @@ export class WikiSpaceService {
   private readonly cacheKey: string;
 
   constructor(
-    private readonly feishuClient: FeishuClient,
+    private readonly knowledgeGateway: NotePlatformKnowledgeGateway,
     config: AppConfig["feishu"],
   ) {
     this.cache = new TtlCache<Array<Record<string, unknown>>>({
@@ -30,26 +30,22 @@ export class WikiSpaceService {
     let hasMore = true;
 
     while (hasMore) {
-      const data = await this.feishuClient.request<{
-        items?: Array<Record<string, unknown>>;
-        has_more?: boolean;
-        page_token?: string;
-      }>("/wiki/v2/spaces", "GET", undefined, {
-        page_size: pageSize,
-        page_token: pageToken,
+      const page = await this.knowledgeGateway.listWikiSpaces({
+        pageSize,
+        pageToken,
       });
 
-      if (Array.isArray(data.items) && data.items.length > 0) {
-        items.push(...data.items);
+      if (page.items.length > 0) {
+        items.push(...page.items);
       }
 
-      hasMore = Boolean(data.has_more);
-      if (hasMore && !data.page_token) {
+      hasMore = page.hasMore;
+      if (hasMore && !page.pageToken) {
         throw new Error(
-          "Feishu wiki spaces pagination returned has_more=true without page_token.",
+          "Wiki spaces pagination returned hasMore=true without pageToken.",
         );
       }
-      pageToken = data.page_token;
+      pageToken = page.pageToken;
     }
 
     return items;

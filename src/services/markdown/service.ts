@@ -1,12 +1,10 @@
-import { extractDocumentId } from '../../feishu/document.js';
+import type {
+  NoteMarkdownNestedBlock,
+  NotePlatformMarkdownGateway,
+  NotePlatformProvider,
+} from '../../platform/index.js';
 import type { DocumentBlockService } from '../document/index.js';
 import type { DocumentEditService } from '../documentEdit/index.js';
-import {
-  parseMarkdownToNestedBlocks,
-  renderFeishuBlocksToMarkdown,
-} from './codec.js';
-import type { NestedFeishuBlock } from './codec.js';
-import { buildTextBlock } from '../documentEdit/richTextBlocks.js';
 
 export interface ImportMarkdownInput {
   documentId: string;
@@ -29,18 +27,20 @@ export interface ExportMarkdownInput {
 
 export class MarkdownDocumentService {
   constructor(
+    private readonly notePlatformProvider: NotePlatformProvider,
+    private readonly notePlatformMarkdownGateway: NotePlatformMarkdownGateway,
     private readonly documentBlockService: DocumentBlockService,
     private readonly documentEditService: DocumentEditService,
   ) {}
 
   async importMarkdown(input: ImportMarkdownInput) {
-    const normalizedDocumentId = requireDocumentId(input.documentId);
+    const normalizedDocumentId = this.requireDocumentId(input.documentId);
     const markdown = input.markdown?.trim();
     if (!markdown) {
       throw new Error('markdown is required.');
     }
 
-    const parsed = parseMarkdownToNestedBlocks(markdown);
+    const parsed = this.notePlatformMarkdownGateway.parseMarkdownToNestedBlocks(markdown);
     const parentBlockId = input.parentBlockId?.trim() || normalizedDocumentId;
 
     // Extract top-level block payloads for the initial batch create.
@@ -101,7 +101,7 @@ export class MarkdownDocumentService {
   private async createNestedChildren(
     documentId: string,
     parentBlockId: string,
-    children: NestedFeishuBlock[],
+    children: NoteMarkdownNestedBlock[],
     input: ImportMarkdownInput,
   ): Promise<number> {
     const childBlocks = children.map((c) => c.block);
@@ -171,7 +171,7 @@ export class MarkdownDocumentService {
             await this.documentEditService.batchCreateBlocks({
               documentId,
               parentBlockId: cellId,
-              children: [buildTextBlock(cellText)],
+              children: [this.notePlatformProvider.buildTextBlock(cellText)],
             });
           } catch {
             failedCells += 1;
@@ -191,7 +191,7 @@ export class MarkdownDocumentService {
   }
 
   async exportMarkdown(input: ExportMarkdownInput) {
-    const normalizedDocumentId = requireDocumentId(input.documentId);
+    const normalizedDocumentId = this.requireDocumentId(input.documentId);
     const parentBlockId =
       input.parentBlockId?.trim() ||
       (await this.documentBlockService.getRootBlock(normalizedDocumentId)).block_id;
@@ -203,7 +203,10 @@ export class MarkdownDocumentService {
       normalizedDocumentId,
       parentBlockId,
     );
-    const rendered = renderFeishuBlocksToMarkdown(blocks, { rootBlockIds });
+    const rendered = this.notePlatformMarkdownGateway.renderBlocksToMarkdown(
+      blocks,
+      { rootBlockIds },
+    );
 
     return {
       documentId: normalizedDocumentId,
@@ -239,14 +242,14 @@ export class MarkdownDocumentService {
 
     return { blocks, rootBlockIds };
   }
-}
 
-function requireDocumentId(documentId: string): string {
-  const normalized = extractDocumentId(documentId);
-  if (!normalized) {
-    throw new Error('Invalid document ID or document URL.');
+  private requireDocumentId(documentId: string): string {
+    const normalized = this.notePlatformProvider.extractDocumentId(documentId);
+    if (!normalized) {
+      throw new Error('Invalid document ID or document URL.');
+    }
+    return normalized;
   }
-  return normalized;
 }
 
 function buildBlockMap(

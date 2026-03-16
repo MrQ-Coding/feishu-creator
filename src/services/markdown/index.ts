@@ -5,14 +5,17 @@ export type {
 } from "./service.js";
 
 export {
+  parseMarkdownToBlocks,
   parseMarkdownToFeishuBlocks,
   parseMarkdownToNestedBlocks,
+  renderBlocksToMarkdown,
   renderFeishuBlocksToMarkdown,
-} from "./codec.js";
+} from "../../platform/feishuMarkdownCodec.js";
 export type {
   MarkdownParseResult,
+  NestedMarkdownBlock,
   MarkdownRenderOptions,
   MarkdownRenderResult,
   NestedFeishuBlock,
   NestedMarkdownParseResult,
-} from "./codec.js";
+} from "../../platform/feishuMarkdownCodec.js";

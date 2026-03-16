@@ -1,3 +1,4 @@
+import type { NotePlatformProvider } from '../../platform/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import {
   findSectionRangeByHeadingPath,
@@ -214,6 +215,7 @@ export function buildLocateCacheKey(input: {
 }
 
 export function locateWithinSiblings(
+  notePlatformProvider: NotePlatformProvider,
   siblings: Array<Record<string, unknown>>,
   input: {
     sectionHeading?: string;
@@ -223,8 +225,14 @@ export function locateWithinSiblings(
 ): ProgressiveLocateSectionResult | null {
   const range =
     input.headingPath.length > 0
-      ? findSectionRangeByHeadingPath(siblings, input.headingPath, input.sectionOccurrence)
+      ? findSectionRangeByHeadingPath(
+          notePlatformProvider,
+          siblings,
+          input.headingPath,
+          input.sectionOccurrence,
+        )
       : findSectionRangeByHeadingText(
+          notePlatformProvider,
           siblings,
           input.sectionHeading as string,
           input.sectionOccurrence,

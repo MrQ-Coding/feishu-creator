@@ -5,7 +5,21 @@ import {
   buildOrderedBlock,
   buildQuoteBlock,
   buildTextBlock,
-} from '../documentEdit/richTextBlocks.js';
+} from './feishuRichTextBlocks.js';
+import { buildTableBlock } from './feishuTableBlocks.js';
+import {
+  extractBlockId,
+  extractBlockText as extractPlatformBlockText,
+  extractBlockType,
+  extractChildIds,
+} from './feishuBlockIntrospection.js';
+import type {
+  NoteMarkdownNestedBlock,
+  NoteMarkdownParseResult,
+  NoteMarkdownParseStats,
+  NoteMarkdownRenderOptions,
+  NoteMarkdownRenderResult,
+} from './types.js';
 
 interface ParsedMarkdownBlock {
   type: 'heading' | 'text' | 'ordered' | 'bullet' | 'quote' | 'code' | 'table';
@@ -17,50 +31,27 @@ interface ParsedMarkdownBlock {
   tableRows?: string[][];
 }
 
-export interface NestedFeishuBlock {
-  block: Record<string, unknown>;
-  children?: NestedFeishuBlock[];
-  tableRows?: string[][];
-}
-
-export interface NestedMarkdownParseResult {
-  nestedChildren: NestedFeishuBlock[];
-  stats: MarkdownParseResult['stats'];
-}
+export type NestedMarkdownBlock = NoteMarkdownNestedBlock;
+export type NestedFeishuBlock = NestedMarkdownBlock;
+export type NestedMarkdownParseResult = NoteMarkdownParseResult;
 
 export interface MarkdownParseResult {
   children: Array<Record<string, unknown>>;
-  stats: {
-    totalBlocks: number;
-    headingCount: number;
-    paragraphCount: number;
-    orderedCount: number;
-    bulletCount: number;
-    quoteCount: number;
-    codeCount: number;
-    tableCount: number;
-  };
+  stats: NoteMarkdownParseStats;
 }
 
-export interface MarkdownRenderResult {
-  markdown: string;
-  stats: {
-    exportedBlocks: number;
-    skippedBlocks: number;
-  };
-}
+export type MarkdownRenderResult = NoteMarkdownRenderResult;
+export type MarkdownRenderOptions = NoteMarkdownRenderOptions;
 
-export interface MarkdownRenderOptions {
-  rootBlockIds?: string[];
-}
-
-export function parseMarkdownToFeishuBlocks(markdown: string): MarkdownParseResult {
+export function parseMarkdownToBlocks(markdown: string): MarkdownParseResult {
   const nested = parseMarkdownToNestedBlocks(markdown);
   return {
     children: flattenNestedBlocks(nested.nestedChildren),
     stats: nested.stats,
   };
 }
+
+export const parseMarkdownToFeishuBlocks = parseMarkdownToBlocks;
 
 export function parseMarkdownToNestedBlocks(markdown: string): NestedMarkdownParseResult {
   const normalized = normalizeMarkdown(markdown);
@@ -155,7 +146,7 @@ export function parseMarkdownToNestedBlocks(markdown: string): NestedMarkdownPar
   };
 }
 
-function flattenNestedBlocks(nested: NestedFeishuBlock[]): Array<Record<string, unknown>> {
+function flattenNestedBlocks(nested: NestedMarkdownBlock[]): Array<Record<string, unknown>> {
   const result: Array<Record<string, unknown>> = [];
   for (const item of nested) {
     result.push(item.block);
@@ -166,9 +157,9 @@ function flattenNestedBlocks(nested: NestedFeishuBlock[]): Array<Record<string, 
   return result;
 }
 
-function convertParsedBlockToNested(block: ParsedMarkdownBlock): NestedFeishuBlock {
-  const feishuBlock = convertParsedBlockToFeishuBlock(block);
-  const nested: NestedFeishuBlock = { block: feishuBlock };
+function convertParsedBlockToNested(block: ParsedMarkdownBlock): NestedMarkdownBlock {
+  const platformBlock = convertParsedBlockToPlatformBlock(block);
+  const nested: NestedMarkdownBlock = { block: platformBlock };
   if (block.children && block.children.length > 0) {
     nested.children = block.children.map(convertParsedBlockToNested);
   }
@@ -178,7 +169,7 @@ function convertParsedBlockToNested(block: ParsedMarkdownBlock): NestedFeishuBlo
   return nested;
 }
 
-export function renderFeishuBlocksToMarkdown(
+export function renderBlocksToMarkdown(
   blocks: Array<Record<string, unknown>>,
   options: MarkdownRenderOptions = {},
 ): MarkdownRenderResult {
@@ -223,6 +214,8 @@ export function renderFeishuBlocksToMarkdown(
     stats,
   };
 }
+
+export const renderFeishuBlocksToMarkdown = renderBlocksToMarkdown;
 
 interface RenderTraversalContext {
   blockMap: Map<string, Record<string, unknown>>;
@@ -304,8 +297,8 @@ function buildBlockMap(
 ): Map<string, Record<string, unknown>> {
   const map = new Map<string, Record<string, unknown>>();
   for (const block of blocks) {
-    const id = block.block_id;
-    if (typeof id === 'string') {
+    const id = extractBlockId(block);
+    if (id) {
       map.set(id, block);
     }
   }
@@ -352,7 +345,7 @@ function summarizeParsedBlocks(blocks: ParsedMarkdownBlock[]): MarkdownParseResu
   return stats;
 }
 
-function convertParsedBlockToFeishuBlock(
+function convertParsedBlockToPlatformBlock(
   block: ParsedMarkdownBlock,
 ): Record<string, unknown> {
   switch (block.type) {
@@ -372,15 +365,7 @@ function convertParsedBlockToFeishuBlock(
       const rows = block.tableRows ?? [];
       const rowSize = rows.length;
       const colSize = rowSize > 0 ? rows[0].length : 0;
-      return {
-        block_type: 31,
-        table: {
-          property: {
-            row_size: rowSize,
-            column_size: colSize,
-          },
-        },
-      };
+      return buildTableBlock(rowSize, colSize);
     }
   }
 }
@@ -727,10 +712,6 @@ function renderSingleBlock(
   }
 }
 
-function extractBlockType(block: Record<string, unknown>): number | undefined {
-  return typeof block.block_type === 'number' ? block.block_type : undefined;
-}
-
 function extractElements(
   block: Record<string, unknown>,
   key: string,
@@ -876,33 +857,23 @@ function renderTableBlock(
     // Cell block may contain children. Try to extract text from it directly.
     // Cell blocks are container blocks (block_type 1 = page) with children.
     // Look for text content in common text-bearing children.
-    const children = cellBlock.children as string[] | undefined;
-    if (children && Array.isArray(children) && children.length > 0) {
+    const children = extractChildIds(cellBlock);
+    if (children.length > 0) {
       const parts: string[] = [];
       for (const childId of children) {
         const childBlock = blockMap.get(childId);
         if (!childBlock) continue;
-        const childType = extractBlockType(childBlock);
-        if (childType === 2) {
-          parts.push(renderPlainText(extractElements(childBlock, 'text')));
-        } else if (childType && childType >= 3 && childType <= 11) {
-          const level = childType - 2;
-          parts.push(renderPlainText(extractElements(childBlock, `heading${level}`)));
-        } else if (childType === 12) {
-          parts.push(renderPlainText(extractElements(childBlock, 'bullet')));
-        } else if (childType === 13) {
-          parts.push(renderPlainText(extractElements(childBlock, 'ordered')));
+        const text = extractPlatformBlockText(childBlock);
+        if (text.length > 0) {
+          parts.push(text);
         }
       }
       return parts.join(' ').replace(/\|/g, '\\|').replace(/\n/g, ' ');
     }
     // Fallback: try to read text directly from the cell block itself.
-    if (extractBlockType(cellBlock) === 2) {
-      return renderPlainText(extractElements(cellBlock, 'text'))
-        .replace(/\|/g, '\\|')
-        .replace(/\n/g, ' ');
-    }
-    return '';
+    return extractPlatformBlockText(cellBlock)
+      .replace(/\|/g, '\\|')
+      .replace(/\n/g, ' ');
   };
 
   const rows: string[][] = [];
@@ -930,12 +901,4 @@ function renderTableBlock(
   }
 
   return lines.join('\n');
-}
-
-function extractChildIds(block: Record<string, unknown>): string[] {
-  const children = block.children;
-  if (!Array.isArray(children)) {
-    return [];
-  }
-  return children.filter((id): id is string => typeof id === 'string' && id.length > 0);
 }

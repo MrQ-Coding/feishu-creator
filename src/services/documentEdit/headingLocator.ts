@@ -44,14 +44,18 @@ export async function locateSectionRangeCached(
     input.parentBlockId,
   );
   if (cachedChildren) {
-    const result = locateWithinSiblings(cachedChildren, input);
+    const result = locateWithinSiblings(runtime.notePlatformProvider, cachedChildren, input);
     if (result) {
       runtime.locateCache.set(cacheKey, result);
     }
     return result;
   }
 
-  const result = await locateSectionRangeByProgressiveScan(runtime.feishuClient, input);
+  const result = await locateSectionRangeByProgressiveScan(
+    runtime.notePlatformDocumentGateway,
+    runtime.notePlatformProvider,
+    input,
+  );
   if (result?.siblings) {
     runtime.documentBlockService.seedChildren(
       input.documentId,

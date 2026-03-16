@@ -1,4 +1,3 @@
-import { buildTextBlock } from './richTextBlocks.js';
 import type { DocumentEditRuntime } from './context.js';
 import { normalizeRevisionId } from './helpers.js';
 import { batchCreateBlocksCore, deleteChildrenRange } from './blockMutationPrimitives.js';
@@ -34,7 +33,7 @@ export async function replaceCellContent(
   const createResult = await batchCreateBlocksCore(runtime, documentId, {
     documentId,
     parentBlockId: cellBlockId,
-    children: [buildTextBlock(normalizedText)],
+    children: [runtime.notePlatformProvider.buildTextBlock(normalizedText)],
     index: 0,
     documentRevisionId: -1,
   });

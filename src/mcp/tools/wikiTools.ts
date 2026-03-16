@@ -6,7 +6,7 @@ import { errorToolResult, jsonToolResult } from "./toolResponse.js";
 export function registerWikiTools(server: McpServer, context: AppContext): void {
   server.tool(
     "get_feishu_wiki_tree",
-    "Get wiki node tree for a Feishu knowledge base with breadth-first traversal, pagination, and caching.",
+    "Get wiki node tree for a Feishu knowledge base with breadth-first traversal, pagination, and caching. This remains a Feishu-specific capability.",
     {
       spaceId: z
         .string()
@@ -55,7 +55,7 @@ export function registerWikiTools(server: McpServer, context: AppContext): void 
 
   server.tool(
     "list_feishu_wiki_spaces",
-    "List Feishu wiki spaces (knowledge bases) visible to current auth identity. When reporting results back, use the returned space name verbatim instead of adding prefixes or paraphrases.",
+    "List Feishu wiki spaces (knowledge bases) visible to current auth identity. This remains a Feishu-specific capability. When reporting results back, use the returned space name verbatim instead of adding prefixes or paraphrases.",
     {
       pageSize: z
         .number()
@@ -88,7 +88,7 @@ export function registerWikiTools(server: McpServer, context: AppContext): void 
 
   server.tool(
     "search_feishu_documents",
-    "Search Feishu documents and/or wiki nodes by keyword. Supports document/wiki/both with pagination. In tenant mode, wiki search automatically falls back to document search due to API limitations.",
+    "Search Feishu documents and/or wiki nodes by keyword. This remains a Feishu-specific discovery capability. Supports document/wiki/both with pagination, and in tenant mode wiki search automatically falls back to document search due to API limitations.",
     {
       searchKey: z
         .string()

@@ -116,7 +116,14 @@ export async function resolveDeleteContext(
     };
   }
 
-  const currentContext = await readCurrentWikiContext(page);
+  const currentContext = await waitForCurrentWikiContext(
+    page,
+    {
+      documentId: explicitDocumentId,
+      nodeToken: explicitNodeToken,
+    },
+    Math.min(config.playwrightActionTimeoutMs, 1500),
+  );
   if (
     currentContext?.spaceId &&
     ((explicitNodeToken && currentContext.nodeToken === explicitNodeToken) ||
@@ -133,13 +140,17 @@ export async function resolveDeleteContext(
 
   const candidateUrls = explicitNodeToken
     ? [buildWikiUrl(config, explicitNodeToken)]
-    : [
-        buildDocumentUrl(config, explicitDocumentId!),
-        buildWikiUrl(config, explicitDocumentId!),
-      ];
+    : [buildDocumentUrl(config, explicitDocumentId!)];
   for (const targetUrl of candidateUrls) {
     await navigateToWikiPage(page, targetUrl, config.playwrightActionTimeoutMs);
-    const resolvedContext = await readCurrentWikiContext(page);
+    const resolvedContext = await waitForCurrentWikiContext(
+      page,
+      {
+        documentId: explicitDocumentId,
+        nodeToken: explicitNodeToken,
+      },
+      Math.min(config.playwrightActionTimeoutMs, 5000),
+    );
     if (
       resolvedContext?.spaceId &&
       resolvedContext.nodeToken &&
@@ -161,27 +172,76 @@ export async function resolveDeleteContext(
 export async function readCurrentWikiContext(
   page: Page,
 ): Promise<CurrentWikiContext | null> {
-  return await page.evaluate(() => {
-    const current = (
-      window as typeof window & {
-        current_space_wiki?: {
-          space_id?: string;
-          wiki_token?: string;
-          obj_token?: string;
-          title?: string;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await page.evaluate(() => {
+        const current = (
+          window as typeof window & {
+            current_space_wiki?: {
+              space_id?: string;
+              wiki_token?: string;
+              obj_token?: string;
+              title?: string;
+            };
+          }
+        ).current_space_wiki;
+        if (!current) {
+          return null;
+        }
+        return {
+          spaceId: current.space_id,
+          nodeToken: current.wiki_token,
+          documentId: current.obj_token,
+          title: current.title,
         };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!isRetryableContextReadError(message) || attempt >= 2) {
+        throw error;
       }
-    ).current_space_wiki;
-    if (!current) {
-      return null;
+      await page.waitForLoadState("domcontentloaded", {
+        timeout: 1500,
+      }).catch(() => undefined);
+      await page.waitForTimeout(150);
     }
-    return {
-      spaceId: current.space_id,
-      nodeToken: current.wiki_token,
-      documentId: current.obj_token,
-      title: current.title,
-    };
-  });
+  }
+
+  return null;
+}
+
+async function waitForCurrentWikiContext(
+  page: Page,
+  matcher: {
+    documentId?: string;
+    nodeToken?: string;
+  },
+  timeoutMs: number,
+): Promise<CurrentWikiContext | null> {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    const currentContext = await readCurrentWikiContext(page);
+    if (
+      currentContext?.spaceId &&
+      currentContext.nodeToken &&
+      (!matcher.nodeToken || currentContext.nodeToken === matcher.nodeToken) &&
+      (!matcher.documentId || currentContext.documentId === matcher.documentId)
+    ) {
+      return currentContext;
+    }
+    await page.waitForTimeout(200);
+  }
+
+  return null;
+}
+
+function isRetryableContextReadError(message: string): boolean {
+  return (
+    message.includes("Execution context was destroyed") ||
+    message.includes("Cannot find context with specified id") ||
+    message.includes("Failed to find execution context")
+  );
 }
 
 export async function getInternalWikiNode(

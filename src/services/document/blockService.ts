@@ -1,19 +1,9 @@
 import type { AppConfig } from "../../config.js";
-import type { FeishuClient } from "../../feishu/client.js";
-import { extractDocumentId } from "../../feishu/document.js";
+import type {
+  NotePlatformDocumentGateway,
+  NotePlatformProvider,
+} from "../../platform/index.js";
 import { TtlCache } from "../../utils/ttlCache.js";
-
-interface DocumentBlockListResponse {
-  items?: Array<Record<string, unknown>>;
-  has_more?: boolean;
-  page_token?: string;
-}
-
-interface DocumentBlockChildrenListResponse {
-  items?: Array<Record<string, unknown>>;
-  has_more?: boolean;
-  page_token?: string;
-}
 
 export interface GetDocumentBlocksOptions {
   pageSize?: number;
@@ -34,7 +24,8 @@ export class DocumentBlockService {
   private readonly childrenCache: TtlCache<Array<Record<string, unknown>>>;
 
   constructor(
-    private readonly feishuClient: FeishuClient,
+    private readonly documentGateway: NotePlatformDocumentGateway,
+    private readonly notePlatformProvider: NotePlatformProvider,
     config: AppConfig["feishu"],
   ) {
     this.allBlocksCache = new TtlCache<Array<Record<string, unknown>>>({
@@ -63,7 +54,7 @@ export class DocumentBlockService {
     documentId: string,
     options: GetDocumentBlocksOptions = {},
   ): Promise<GetDocumentBlocksResult> {
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId = this.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) {
       throw new Error("Invalid document ID or document URL.");
     }
@@ -95,7 +86,7 @@ export class DocumentBlockService {
     blockId: string,
     pageSize = 200,
   ): Promise<Array<Record<string, unknown>>> {
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId = this.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) {
       throw new Error("Invalid document ID or document URL.");
     }
@@ -113,28 +104,27 @@ export class DocumentBlockService {
         let hasMore = true;
 
         while (hasMore) {
-          const data = await this.feishuClient.request<DocumentBlockChildrenListResponse>(
-            `/docx/v1/documents/${normalizedDocumentId}/blocks/${normalizedBlockId}/children`,
-            "GET",
-            undefined,
+          const page = await this.documentGateway.listBlockChildren(
+            normalizedDocumentId,
+            normalizedBlockId,
             {
-              page_size: safePageSize,
-              page_token: pageToken,
-              document_revision_id: -1,
+              pageSize: safePageSize,
+              pageToken,
+              documentRevisionId: -1,
             },
           );
 
-          if (Array.isArray(data.items) && data.items.length > 0) {
-            items.push(...data.items);
+          if (page.items.length > 0) {
+            items.push(...page.items);
           }
 
-          hasMore = Boolean(data.has_more);
-          if (hasMore && !data.page_token) {
+          hasMore = page.hasMore;
+          if (hasMore && !page.pageToken) {
             throw new Error(
-              "Feishu children pagination returned has_more=true without page_token.",
+              "Document children pagination returned hasMore=true without pageToken.",
             );
           }
-          pageToken = data.page_token;
+          pageToken = page.pageToken;
         }
 
         return items;
@@ -143,7 +133,7 @@ export class DocumentBlockService {
   }
 
   invalidateDocument(documentId: string): void {
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId = this.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) return;
     this.allBlocksCache.delete(this.buildAllBlocksCacheKey(normalizedDocumentId));
     this.rootBlockCache.delete(this.buildRootBlockCacheKey(normalizedDocumentId));
@@ -154,7 +144,7 @@ export class DocumentBlockService {
     documentId: string,
     blockId: string,
   ): Array<Record<string, unknown>> | null {
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId = this.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) return null;
     const normalizedBlockId = blockId.trim();
     if (!normalizedBlockId) return null;
@@ -168,7 +158,7 @@ export class DocumentBlockService {
     blockId: string,
     items: Array<Record<string, unknown>>,
   ): void {
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId = this.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) return;
     const normalizedBlockId = blockId.trim();
     if (!normalizedBlockId) return;
@@ -203,28 +193,23 @@ export class DocumentBlockService {
     let hasMore = true;
 
     while (hasMore) {
-      const data = await this.feishuClient.request<DocumentBlockListResponse>(
-        `/docx/v1/documents/${normalizedDocumentId}/blocks`,
-        "GET",
-        undefined,
-        {
-          page_size: pageSize,
-          page_token: pageToken,
-          document_revision_id: -1,
-        },
-      );
+      const page = await this.documentGateway.listDocumentBlocks(normalizedDocumentId, {
+        pageSize,
+        pageToken,
+        documentRevisionId: -1,
+      });
 
-      if (Array.isArray(data.items) && data.items.length > 0) {
-        allItems.push(...data.items);
+      if (page.items.length > 0) {
+        allItems.push(...page.items);
       }
 
-      hasMore = Boolean(data.has_more);
-      if (hasMore && !data.page_token) {
+      hasMore = page.hasMore;
+      if (hasMore && !page.pageToken) {
         throw new Error(
-          "Feishu blocks pagination returned has_more=true without page_token.",
+          "Document blocks pagination returned hasMore=true without pageToken.",
         );
       }
-      pageToken = data.page_token;
+      pageToken = page.pageToken;
     }
 
     return allItems;
@@ -303,7 +288,7 @@ export class DocumentBlockService {
   }
 
   async getRootBlock(documentId: string): Promise<Record<string, unknown>> {
-    const normalizedDocumentId = extractDocumentId(documentId);
+    const normalizedDocumentId = this.notePlatformProvider.extractDocumentId(documentId);
     if (!normalizedDocumentId) {
       throw new Error("Invalid document ID or document URL.");
     }
@@ -313,16 +298,11 @@ export class DocumentBlockService {
   private async fetchRootBlock(documentId: string): Promise<Record<string, unknown>> {
     const cacheKey = this.buildRootBlockCacheKey(documentId);
     return this.rootBlockCache.getOrLoad(cacheKey, async () => {
-      const data = await this.feishuClient.request<DocumentBlockListResponse>(
-        `/docx/v1/documents/${documentId}/blocks`,
-        "GET",
-        undefined,
-        {
-          page_size: 1,
-          document_revision_id: -1,
-        },
-      );
-      const rootBlock = Array.isArray(data.items) ? data.items[0] : undefined;
+      const page = await this.documentGateway.listDocumentBlocks(documentId, {
+        pageSize: 1,
+        documentRevisionId: -1,
+      });
+      const rootBlock = page.items[0];
       if (!rootBlock) {
         throw new Error("Document root block not found.");
       }

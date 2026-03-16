@@ -18,7 +18,7 @@ export async function resolveTableParentBlockId(
     return normalized;
   }
   const rootBlock = await runtime.documentBlockService.getRootBlock(documentId);
-  const rootBlockId = extractBlockId(rootBlock);
+  const rootBlockId = runtime.notePlatformProvider.extractBlockId(rootBlock);
   if (!rootBlockId) {
     throw new Error('Unable to resolve document root block.');
   }
@@ -45,7 +45,7 @@ export async function getTableCellIds(
     const row: string[] = [];
     for (let columnIndex = 0; columnIndex < columnSize; columnIndex += 1) {
       const child = children[rowIndex * columnSize + columnIndex];
-      const blockId = extractBlockId(child);
+      const blockId = runtime.notePlatformProvider.extractBlockId(child);
       if (!blockId) {
         throw new Error(`Table cell at [${rowIndex}, ${columnIndex}] is missing block_id.`);
       }
@@ -62,7 +62,7 @@ export async function resolveTableSnapshot(
   tableBlockId: string,
 ): Promise<ResolvedTableSnapshot> {
   const blocks = await runtime.documentBlockService.getAllBlocks(documentId);
-  const blockMap = buildBlockMap(blocks);
+  const blockMap = buildBlockMap(runtime, blocks);
   const tableBlock = blockMap.get(tableBlockId);
   if (!tableBlock) {
     throw new Error(`Table block not found: ${tableBlockId}`);
@@ -79,9 +79,9 @@ export async function resolveTableSnapshot(
     'table.property.column_size',
   );
   const cellBlockIds = await getTableCellIds(runtime, documentId, tableBlockId, rowSize, columnSize);
-  const cells = buildCellTextMatrix(cellBlockIds, blockMap);
+  const cells = buildCellTextMatrix(runtime, cellBlockIds, blockMap);
   const mergeInfo = buildMergeInfoMap(rowSize, columnSize, tableRecord.merge_info);
-  const parentInfo = findParentInfo(blockMap, tableBlockId);
+  const parentInfo = findParentInfo(runtime, blockMap, tableBlockId);
   if (!parentInfo) {
     throw new Error(`Unable to resolve parent info for table block: ${tableBlockId}`);
   }
@@ -138,11 +138,12 @@ function buildMergeInfoMap(
 }
 
 function findParentInfo(
+  runtime: DocumentEditRuntime,
   blockMap: Map<string, Record<string, unknown>>,
   targetBlockId: string,
 ): { parentBlockId: string; index: number } | null {
   for (const [blockId, block] of blockMap.entries()) {
-    const childIds = extractChildIds(block);
+    const childIds = runtime.notePlatformProvider.extractChildIds(block);
     const index = childIds.indexOf(targetBlockId);
     if (index >= 0) {
       return { parentBlockId: blockId, index };
@@ -152,11 +153,12 @@ function findParentInfo(
 }
 
 function buildBlockMap(
+  runtime: DocumentEditRuntime,
   blocks: Array<Record<string, unknown>>,
 ): Map<string, Record<string, unknown>> {
   const blockMap = new Map<string, Record<string, unknown>>();
   for (const block of blocks) {
-    const blockId = extractBlockId(block);
+    const blockId = runtime.notePlatformProvider.extractBlockId(block);
     if (blockId) {
       blockMap.set(blockId, block);
     }
@@ -165,15 +167,19 @@ function buildBlockMap(
 }
 
 function buildCellTextMatrix(
+  runtime: DocumentEditRuntime,
   cellBlockIds: string[][],
   blockMap: Map<string, Record<string, unknown>>,
 ): string[][] {
   return cellBlockIds.map((row) =>
-    row.map((cellBlockId) => extractBlockText(cellBlockId, blockMap, new Set())),
+    row.map((cellBlockId) =>
+      extractBlockText(runtime, cellBlockId, blockMap, new Set()),
+    ),
   );
 }
 
 function extractBlockText(
+  runtime: DocumentEditRuntime,
   blockId: string,
   blockMap: Map<string, Record<string, unknown>>,
   visited: Set<string>,
@@ -183,84 +189,20 @@ function extractBlockText(
 
   const block = blockMap.get(blockId);
   if (!block) return '';
-  const blockType = typeof block.block_type === 'number' ? block.block_type : undefined;
-
-  if (blockType === 2) {
-    return extractElementTextArray(extractElements(block, 'text'));
-  }
-  if (blockType !== undefined && blockType >= 3 && blockType <= 11) {
-    return extractElementTextArray(extractElements(block, `heading${blockType - 2}`));
-  }
-  if (blockType === 12) {
-    return extractElementTextArray(extractElements(block, 'bullet'));
-  }
-  if (blockType === 13) {
-    return extractElementTextArray(extractElements(block, 'ordered'));
-  }
-  if (blockType === 14) {
-    return extractElementTextArray(extractElements(block, 'code'));
-  }
-  if (blockType === 15) {
-    return extractElementTextArray(extractElements(block, 'quote'));
+  const text = runtime.notePlatformProvider.extractBlockText(block);
+  if (text.length > 0) {
+    return text;
   }
 
-  const childIds = extractChildIds(block);
+  const childIds = runtime.notePlatformProvider.extractChildIds(block);
   if (childIds.length === 0) {
     return '';
   }
 
   return childIds
-    .map((childId) => extractBlockText(childId, blockMap, visited))
+    .map((childId) => extractBlockText(runtime, childId, blockMap, visited))
     .filter((text) => text.length > 0)
     .join('\n');
-}
-
-function extractElements(
-  block: Record<string, unknown>,
-  key: string,
-): Array<Record<string, unknown>> {
-  const container = block[key];
-  if (!container || typeof container !== 'object') return [];
-  const elements = (container as Record<string, unknown>).elements;
-  return Array.isArray(elements)
-    ? elements.filter(
-        (item): item is Record<string, unknown> => typeof item === 'object' && item !== null,
-      )
-    : [];
-}
-
-function extractElementTextArray(elements: Array<Record<string, unknown>>): string {
-  return elements
-    .map((element) => {
-      const textRun = element.text_run;
-      if (textRun && typeof textRun === 'object') {
-        const content = (textRun as Record<string, unknown>).content;
-        return typeof content === 'string' ? content : '';
-      }
-      const equation = element.equation;
-      if (equation && typeof equation === 'object') {
-        const content = (equation as Record<string, unknown>).content;
-        return typeof content === 'string' ? content : '';
-      }
-      return '';
-    })
-    .join('');
-}
-
-function extractChildIds(block: Record<string, unknown>): string[] {
-  const children = block.children;
-  if (!Array.isArray(children)) {
-    return [];
-  }
-  return children.filter(
-    (value): value is string => typeof value === 'string' && value.trim().length > 0,
-  );
-}
-
-function extractBlockId(block: Record<string, unknown>): string | undefined {
-  return typeof block.block_id === 'string' && block.block_id.trim().length > 0
-    ? block.block_id.trim()
-    : undefined;
 }
 
 function asRecord(value: unknown, field: string): Record<string, unknown> {

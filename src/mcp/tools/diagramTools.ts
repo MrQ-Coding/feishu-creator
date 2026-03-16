@@ -16,7 +16,7 @@ const graphvizLayoutEngineSchema = z
 const documentIdField = z
   .string()
   .describe(
-    "Document ID or URL. Examples: https://xxx.feishu.cn/docx/xxx or raw document id.",
+    "Document ID or URL for the current platform implementation. Today this accepts Feishu doc/wiki references.",
   );
 
 const createImageBlockFields = {
@@ -105,7 +105,7 @@ export function registerDiagramTools(
 
   server.tool(
     "create_graphviz_diagram_block",
-    "Render Graphviz DOT source to a PNG image, then upload it into a Feishu document.",
+    "Render Graphviz DOT source to a PNG image, then upload it into the current document platform implementation. Today this inserts the image into a Feishu document.",
     {
       documentId: documentIdField,
       sourceText: z
@@ -183,7 +183,7 @@ export function registerDiagramTools(
 
   server.tool(
     "create_plantuml_diagram_block",
-    "Render PlantUML source to a PNG image, then upload it into a Feishu document.",
+    "Render PlantUML source to a PNG image, then upload it into the current document platform implementation. Today this inserts the image into a Feishu document.",
     {
       documentId: documentIdField,
       sourceText: z

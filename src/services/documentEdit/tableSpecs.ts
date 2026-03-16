@@ -1,16 +1,5 @@
 import type { TableSnapshot } from './types.js';
-
-export function buildTableBlock(rowSize: number, columnSize: number): Record<string, unknown> {
-  return {
-    block_type: 31,
-    table: {
-      property: {
-        row_size: rowSize,
-        column_size: columnSize,
-      },
-    },
-  };
-}
+export { buildTableBlock } from '../../platform/feishuTableBlocks.js';
 
 export function normalizeTableSpec(input: {
   rowSize?: number;

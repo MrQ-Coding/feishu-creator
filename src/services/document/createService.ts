@@ -1,4 +1,4 @@
-import type { FeishuClient } from "../../feishu/client.js";
+import type { NotePlatformDocumentGateway } from "../../platform/index.js";
 import type { WikiSpaceService, WikiTreeService } from "../wiki/index.js";
 
 export interface CreateWikiContext {
@@ -6,33 +6,13 @@ export interface CreateWikiContext {
   parentNodeToken?: string;
 }
 
-export interface CreateFeishuDocumentInput {
+export interface CreateDocumentInput {
   title: string;
   folderToken?: string;
   wikiContext?: CreateWikiContext;
 }
 
-interface CreateDocumentApiResponse {
-  document?: {
-    document_id?: string;
-    title?: string;
-    url?: string;
-  };
-}
-
-interface CreateWikiNodeApiResponse {
-  node?: {
-    title?: string;
-    space_id?: string;
-    node_token?: string;
-    parent_node_token?: string;
-    obj_token?: string;
-    obj_type?: string;
-    url?: string;
-  };
-}
-
-export interface CreateFeishuDocumentResult {
+export interface CreateDocumentResult {
   mode: "folder" | "wiki";
   title: string;
   documentId: string;
@@ -43,16 +23,19 @@ export interface CreateFeishuDocumentResult {
   parentNodeToken?: string;
 }
 
+export type CreateFeishuDocumentInput = CreateDocumentInput;
+export type CreateFeishuDocumentResult = CreateDocumentResult;
+
 export class DocumentCreateService {
   constructor(
-    private readonly feishuClient: FeishuClient,
+    private readonly documentGateway: NotePlatformDocumentGateway,
     private readonly wikiSpaceService: WikiSpaceService,
     private readonly wikiTreeService: WikiTreeService,
   ) {}
 
   async createDocument(
-    input: CreateFeishuDocumentInput,
-  ): Promise<CreateFeishuDocumentResult> {
+    input: CreateDocumentInput,
+  ): Promise<CreateDocumentResult> {
     const title = this.normalizeRequired(input.title, "title");
     const folderToken = this.normalizeOptional(input.folderToken);
     const wikiContext = input.wikiContext;
@@ -78,26 +61,14 @@ export class DocumentCreateService {
   private async createInFolder(
     title: string,
     folderToken: string,
-  ): Promise<CreateFeishuDocumentResult> {
-    const data = await this.feishuClient.request<CreateDocumentApiResponse>(
-      "/docx/v1/documents",
-      "POST",
-      {
-        title,
-        folder_token: folderToken,
-      },
-    );
-
-    const documentId = this.normalizeRequired(
-      data.document?.document_id,
-      "document.document_id",
-    );
+  ): Promise<CreateDocumentResult> {
+    const created = await this.documentGateway.createDocumentInFolder(title, folderToken);
 
     return {
       mode: "folder",
-      title: data.document?.title ?? title,
-      documentId,
-      url: this.normalizeOptional(data.document?.url),
+      title: created.title ?? title,
+      documentId: created.documentId,
+      url: this.normalizeOptional(created.url),
       folderToken,
     };
   }
@@ -106,24 +77,12 @@ export class DocumentCreateService {
     title: string,
     spaceId: string,
     parentNodeToken?: string,
-  ): Promise<CreateFeishuDocumentResult> {
-    const payload: Record<string, unknown> = {
+  ): Promise<CreateDocumentResult> {
+    const created = await this.documentGateway.createWikiDocument(
       title,
-      obj_type: "docx",
-      node_type: "origin",
-    };
-    if (parentNodeToken) {
-      payload.parent_node_token = parentNodeToken;
-    }
-
-    const data = await this.feishuClient.request<CreateWikiNodeApiResponse>(
-      `/wiki/v2/spaces/${spaceId}/nodes`,
-      "POST",
-      payload,
+      spaceId,
+      parentNodeToken,
     );
-
-    const nodeToken = this.normalizeRequired(data.node?.node_token, "node.node_token");
-    const documentId = this.normalizeRequired(data.node?.obj_token, "node.obj_token");
 
     // Wiki tree/list caches can be stale right after node creation.
     this.wikiSpaceService.invalidateAll();
@@ -131,13 +90,13 @@ export class DocumentCreateService {
 
     return {
       mode: "wiki",
-      title: data.node?.title ?? title,
-      documentId,
-      url: this.normalizeOptional(data.node?.url),
-      spaceId: this.normalizeOptional(data.node?.space_id) ?? spaceId,
-      nodeToken,
+      title: created.title ?? title,
+      documentId: created.documentId,
+      url: this.normalizeOptional(created.url),
+      spaceId: this.normalizeOptional(created.spaceId) ?? spaceId,
+      nodeToken: created.nodeToken,
       parentNodeToken:
-        this.normalizeOptional(data.node?.parent_node_token) ?? parentNodeToken,
+        this.normalizeOptional(created.parentNodeToken) ?? parentNodeToken,
     };
   }
 
