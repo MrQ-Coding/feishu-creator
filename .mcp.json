@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "feishu-creator": {
+      "command": "node",
+      "args": [
+        "dist/index.js",
+        "--stdio"
+      ]
+    }
+  }
+}
