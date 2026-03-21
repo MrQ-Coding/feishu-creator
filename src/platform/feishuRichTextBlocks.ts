@@ -189,17 +189,43 @@ function buildTextElements(
   }
 
   const elements: Array<Record<string, unknown>> = [];
+
+  // Phase 1: Split text into code spans and non-code segments.
+  const segments = splitByCodeSpans(text);
+
+  for (const segment of segments) {
+    if (segment.isCode) {
+      elements.push(
+        buildStyledTextElement(
+          normalizeInlineCodeContent(segment.text),
+          { inline_code: true },
+        ),
+      );
+    } else {
+      // Phase 2: Parse bold/italic/strikethrough in non-code segments.
+      parseInlineFormatting(segment.text, elements);
+    }
+  }
+
+  return elements.length > 0 ? elements : [buildPlainTextElement("")];
+}
+
+/** Split text into inline-code spans and plain-text segments, preserving order. */
+function splitByCodeSpans(text: string): Array<{ text: string; isCode: boolean }> {
+  const segments: Array<{ text: string; isCode: boolean }> = [];
   let cursor = 0;
 
   while (cursor < text.length) {
     const opening = findBacktickRun(text, cursor);
     if (!opening) {
-      pushTextElement(elements, text.slice(cursor));
+      if (cursor < text.length) {
+        segments.push({ text: text.slice(cursor), isCode: false });
+      }
       break;
     }
 
     if (opening.index > cursor) {
-      pushTextElement(elements, text.slice(cursor, opening.index));
+      segments.push({ text: text.slice(cursor, opening.index), isCode: false });
     }
 
     const closing = findMatchingBacktickRun(
@@ -208,40 +234,96 @@ function buildTextElements(
       opening.length,
     );
     if (!closing) {
-      pushTextElement(elements, text.slice(opening.index, opening.index + opening.length));
+      segments.push({
+        text: text.slice(opening.index, opening.index + opening.length),
+        isCode: false,
+      });
       cursor = opening.index + opening.length;
       continue;
     }
 
-    elements.push(
-      buildStyledTextElement(
-        normalizeInlineCodeContent(
-          text.slice(opening.index + opening.length, closing.index),
-        ),
-        { inline_code: true },
-      ),
-    );
+    segments.push({
+      text: text.slice(opening.index + opening.length, closing.index),
+      isCode: true,
+    });
     cursor = closing.index + closing.length;
   }
 
-  return elements.length > 0 ? elements : [buildPlainTextElement("")];
+  return segments;
+}
+
+/**
+ * Parse bold, italic, and strikethrough markers in plain text and push
+ * styled text elements into the given array.
+ *
+ * Supported patterns (in matching priority order):
+ *   ***text*** → bold + italic
+ *   **text**   → bold
+ *   *text*     → italic
+ *   ~~text~~   → strikethrough
+ */
+function parseInlineFormatting(
+  text: string,
+  elements: Array<Record<string, unknown>>,
+): void {
+  // The regex alternation order ensures longer markers match first.
+  // Group 1: bold+italic, Group 2: bold, Group 3: italic, Group 4: strikethrough
+  const pattern = /\*\*\*(.+?)\*\*\*|\*\*(.+?)\*\*|(?<!\*)\*([^*\n]+?)\*(?!\*)|~~(.+?)~~/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    // Push preceding plain text
+    if (match.index > lastIndex) {
+      pushTextElement(elements, text.slice(lastIndex, match.index));
+    }
+
+    if (match[1] !== undefined) {
+      elements.push(buildStyledTextElement(match[1], { bold: true, italic: true }));
+    } else if (match[2] !== undefined) {
+      elements.push(buildStyledTextElement(match[2], { bold: true }));
+    } else if (match[3] !== undefined) {
+      elements.push(buildStyledTextElement(match[3], { italic: true }));
+    } else if (match[4] !== undefined) {
+      elements.push(buildStyledTextElement(match[4], { strikethrough: true }));
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Push trailing plain text
+  if (lastIndex < text.length) {
+    pushTextElement(elements, text.slice(lastIndex));
+  }
 }
 
 function buildPlainTextElement(text: string): Record<string, unknown> {
   return buildStyledTextElement(text);
 }
 
+interface InlineStyle {
+  bold?: boolean;
+  italic?: boolean;
+  strikethrough?: boolean;
+  inline_code?: boolean;
+}
+
 function buildStyledTextElement(
   text: string,
-  style?: { inline_code?: boolean },
+  style?: InlineStyle,
 ): Record<string, unknown> {
   const textRun: Record<string, unknown> = {
     content: text,
   };
-  if (style?.inline_code) {
-    textRun.text_element_style = {
-      inline_code: true,
-    };
+  if (style) {
+    const elementStyle: Record<string, boolean> = {};
+    if (style.bold) elementStyle.bold = true;
+    if (style.italic) elementStyle.italic = true;
+    if (style.strikethrough) elementStyle.strikethrough = true;
+    if (style.inline_code) elementStyle.inline_code = true;
+    if (Object.keys(elementStyle).length > 0) {
+      textRun.text_element_style = elementStyle;
+    }
   }
   return {
     text_run: textRun,

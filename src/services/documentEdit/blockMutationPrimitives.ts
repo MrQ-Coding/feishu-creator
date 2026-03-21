@@ -58,7 +58,21 @@ export async function batchCreateBlocksCore(
   let chunkIndex = 0;
 
   while (cursor < totalRequested) {
-    const effectiveChunkSize = Math.min(currentChunkSize, totalRequested - cursor);
+    // Table blocks (block_type 31) must be sent alone — Feishu API rejects
+    // them when mixed with other block types in the same batch request.
+    let effectiveChunkSize = Math.min(currentChunkSize, totalRequested - cursor);
+    const firstBlock = input.children[cursor] as Record<string, unknown> | undefined;
+    if (firstBlock && firstBlock.block_type === 31) {
+      effectiveChunkSize = 1;
+    } else {
+      for (let i = 1; i < effectiveChunkSize; i++) {
+        const block = input.children[cursor + i] as Record<string, unknown> | undefined;
+        if (block && block.block_type === 31) {
+          effectiveChunkSize = i;
+          break;
+        }
+      }
+    }
     const chunk = input.children.slice(cursor, cursor + effectiveChunkSize);
     const requestIndex = nextInsertIndex;
     const clientToken = buildClientToken(checkpointTokenSeed, cursor, chunk.length);
