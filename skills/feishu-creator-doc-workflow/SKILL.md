@@ -18,6 +18,7 @@ description: Safely create, inspect, update, replace, move, copy, and verify Fei
 | 对多篇文档批量操作 | [批量操作](#批量操作) |
 | 添加图表 | [图表与表格](#图表与表格) |
 | 操作表格 | [图表与表格](#图表与表格) |
+| 将 PDF/PPT/DOCX 导入飞书 | [外部文件导入飞书](#外部文件导入飞书) |
 
 ## 核心原则
 
@@ -76,6 +77,51 @@ description: Safely create, inspect, update, replace, move, copy, and verify Fei
 - Markdown → 飞书对复杂格式（嵌套表格、HTML）有损。
 - markdown 中的图片必须是本地文件路径或可访问的 URL。
 - 往返检查发现问题时，改用 `upsert_section` 逐章节导入。
+
+## 外部文件导入飞书
+
+**场景：** 用户需要将 PDF、PPT、DOCX 等文件内容导入飞书文档。
+
+### 前提
+
+需要配套 MCP 工具（如 `docling-mcp`）将文件转为 Markdown。配套工具的安装见 `feishu-setup` skill 的"推荐配套 MCP 工具"章节。
+
+### 工作流
+
+1. **转换**：使用 docling 等工具将源文件转为 Markdown。
+2. **审查**：检查转换后的 Markdown 质量，必要时人工修正。
+3. **创建目标文档**：`create_document` 创建飞书文档。
+4. **导入**：`import_markdown_to_document` 将 Markdown 写入飞书。
+5. **验证**：`get_document_blocks` 或 `export_document_to_markdown` 确认结果。
+
+### 格式兼容说明
+
+`import_markdown_to_document` 对外部工具输出的 Markdown 做了以下兼容处理：
+
+| 格式 | 处理方式 |
+|------|----------|
+| YAML frontmatter (`---...---`) | 自动剥离 |
+| 水平分割线 (`---`, `***`, `___`) | 静默跳过（飞书无对应块） |
+| 图片 `![alt](url)` | 降级为可点击链接 `[alt](url)` |
+| 任务列表 `- [ ]` / `- [x]` | 转为 ☐ / ☑ 标记的普通列表 |
+| HTML 标签 (`<br>`, `<div>`, `<p>` 等) | 剥离标签，保留内容 |
+
+### 图片处理策略
+
+Markdown 中的图片语法会降级为链接。如需在飞书文档中显示图片：
+
+1. 先用 `import_markdown_to_document` 导入文本内容。
+2. 识别需要插入图片的位置。
+3. 使用 `upload_local_image` 逐个上传图片到对应位置。
+
+### 大文件导入策略
+
+源文件超过 50 页或转换后 Markdown 超过 50KB 时：
+
+1. 将 Markdown 按一级标题拆分为多个章节。
+2. `create_document` 创建飞书文档。
+3. 逐章节调用 `upsert_section` 写入，而非一次性 `import_markdown_to_document`。
+4. 每个章节写入后验证，失败时单独重试该章节。
 
 ## 重组章节
 

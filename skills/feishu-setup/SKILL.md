@@ -85,6 +85,18 @@ MCP_MODE=auto
 
 当调用方是用户控制的 agent 或上游网关时，参考 [references/user-agent-mcp-protocol.md](references/user-agent-mcp-protocol.md)。
 
+## 推荐配套 MCP 工具
+
+用户完成 feishu-creator 安装后，可推荐以下配套工具增强文档工作流。这些工具应安装到**用户全局配置**（`~/.claude/.mcp.json`），不要写入项目级 `.mcp.json`。
+
+详见 [references/companion-mcp-tools.md](references/companion-mcp-tools.md)。
+
+安装流程：
+
+1. 读取用户现有的 `~/.claude/.mcp.json`（可能不存在）。
+2. 将所选工具的配置合并写入，保留已有配置。
+3. 提醒用户重启 Claude Code 以加载新的 MCP server。
+
 ## 护栏
 
 - 报告文件时始终使用绝对路径。

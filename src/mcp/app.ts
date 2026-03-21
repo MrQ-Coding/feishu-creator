@@ -5,6 +5,7 @@ import { registerAuthTools } from "./tools/authTools.js";
 import { registerDiagramTools } from "./tools/diagramTools.js";
 import { registerDocumentCoreTools } from "./tools/documentCoreTools.js";
 import { registerDocumentEditTools } from "./tools/documentEditTools.js";
+import { registerDocumentExportTools } from "./tools/documentExportTools.js";
 import { registerDocumentMarkdownTools } from "./tools/documentMarkdownTools.js";
 import { registerWikiTools } from "./tools/wikiTools.js";
 import { registerStyleProfileTools } from "./tools/styleProfileTools.js";
@@ -26,6 +27,7 @@ export function createMcpServer(context: AppContext): McpServer {
   registerDocumentCoreTools(server, context);
   registerDocumentEditTools(server, context);
   registerDiagramTools(server, context);
+  registerDocumentExportTools(server, context);
   registerDocumentMarkdownTools(server, context);
   registerWikiTools(server, context);
   registerStyleProfileTools(server, context);

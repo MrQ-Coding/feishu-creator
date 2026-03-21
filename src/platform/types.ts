@@ -228,6 +228,35 @@ export interface NotePlatformMarkdownGateway {
   ): NoteMarkdownRenderResult;
 }
 
+export type NoteExportFileExtension = 'pdf' | 'docx';
+
+export interface NoteExportTaskResult {
+  ticket: string;
+}
+
+export interface NoteExportTaskStatus {
+  fileExtension: string;
+  type: string;
+  fileName: string;
+  fileToken: string;
+  fileSize: number;
+  jobStatus: number;
+  jobErrorMsg: string;
+}
+
+export interface NotePlatformExportGateway {
+  createExportTask(
+    documentToken: string,
+    fileExtension: NoteExportFileExtension,
+    documentType?: string,
+  ): Promise<NoteExportTaskResult>;
+  getExportTaskStatus(
+    ticket: string,
+    documentToken: string,
+  ): Promise<NoteExportTaskStatus>;
+  downloadExportFile(fileToken: string): Promise<NoteDownloadedMedia>;
+}
+
 export interface NotePlatformProvider {
   readonly id: string;
   extractDocumentId(input: string): string | null;

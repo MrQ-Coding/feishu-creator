@@ -15,6 +15,7 @@ export {
 } from "./feishuBlockCopying.js";
 export { FeishuNotePlatformMarkdownGateway } from "./feishuMarkdownGateway.js";
 export { FeishuNotePlatformMediaGateway } from "./feishuMediaGateway.js";
+export { FeishuNotePlatformExportGateway } from "./feishuExportGateway.js";
 export { FeishuNotePlatformProvider } from "./feishuProvider.js";
 export type {
   NoteAuthType,
@@ -41,6 +42,10 @@ export type {
   NotePlatformProvider,
   NoteUpdateBlockTextResult,
   NoteUploadImageToBlockResult,
+  NoteExportFileExtension,
+  NoteExportTaskResult,
+  NoteExportTaskStatus,
+  NotePlatformExportGateway,
   NoteWikiPage,
   NoteWikiInfoResult,
 } from "./types.js";

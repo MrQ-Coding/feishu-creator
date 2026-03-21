@@ -5,12 +5,14 @@ import { Logger } from "./logger.js";
 import {
   FeishuNotePlatformDocumentGateway,
   FeishuNotePlatformEditGateway,
+  FeishuNotePlatformExportGateway,
   FeishuNotePlatformKnowledgeGateway,
   FeishuNotePlatformMarkdownGateway,
   FeishuNotePlatformMediaGateway,
   FeishuNotePlatformProvider,
   type NotePlatformDocumentGateway,
   type NotePlatformEditGateway,
+  type NotePlatformExportGateway,
   type NotePlatformKnowledgeGateway,
   type NotePlatformMarkdownGateway,
   type NotePlatformMediaGateway,
@@ -23,6 +25,7 @@ import {
 } from "./services/document/index.js";
 import { DocumentEditService } from "./services/documentEdit/index.js";
 import { DiagramImageService } from "./services/diagramImage/index.js";
+import { DocumentExportService } from "./services/export/index.js";
 import { MarkdownDocumentService } from "./services/markdown/index.js";
 import { SearchService } from "./services/search/index.js";
 import { StyleProfileService } from "./services/styleProfile/index.js";
@@ -50,6 +53,7 @@ export interface AppContext {
   notePlatformEditGateway: NotePlatformEditGateway;
   notePlatformMarkdownGateway: NotePlatformMarkdownGateway;
   notePlatformMediaGateway: NotePlatformMediaGateway;
+  notePlatformExportGateway: NotePlatformExportGateway;
   authManager: FeishuAuthManager;
   feishuClient: FeishuClient;
   documentBlockService: DocumentBlockService;
@@ -57,6 +61,7 @@ export interface AppContext {
   documentEditService: DocumentEditService;
   documentInfoService: DocumentInfoService;
   diagramImageService: DiagramImageService;
+  documentExportService: DocumentExportService;
   markdownDocumentService: MarkdownDocumentService;
   searchService: SearchService;
   styleProfileService: StyleProfileService;
@@ -77,6 +82,7 @@ export function createAppContext(
   const notePlatformEditGateway = new FeishuNotePlatformEditGateway(feishuClient);
   const notePlatformMarkdownGateway = new FeishuNotePlatformMarkdownGateway();
   const notePlatformMediaGateway = new FeishuNotePlatformMediaGateway(feishuClient);
+  const notePlatformExportGateway = new FeishuNotePlatformExportGateway(feishuClient);
   const documentBlockService = new DocumentBlockService(
     notePlatformDocumentGateway,
     notePlatformProvider,
@@ -115,6 +121,10 @@ export function createAppContext(
   const diagramImageService = new DiagramImageService(
     documentEditService,
     config.feishu,
+  );
+  const documentExportService = new DocumentExportService(
+    notePlatformProvider,
+    notePlatformExportGateway,
   );
   const markdownDocumentService = new MarkdownDocumentService(
     notePlatformProvider,
@@ -175,6 +185,7 @@ export function createAppContext(
     notePlatformEditGateway,
     notePlatformMarkdownGateway,
     notePlatformMediaGateway,
+    notePlatformExportGateway,
     authManager,
     feishuClient,
     documentBlockService,
@@ -182,6 +193,7 @@ export function createAppContext(
     documentEditService,
     documentInfoService,
     diagramImageService,
+    documentExportService,
     markdownDocumentService,
     searchService,
     styleProfileService,

@@ -74,6 +74,12 @@ export function parseMarkdownToNestedBlocks(markdown: string): NestedMarkdownPar
       continue;
     }
 
+    // Horizontal rule (---, ***, ___) — skip silently (no Feishu equivalent)
+    if (/^(?:[-*_][ \t]*){3,}\s*$/.test(line)) {
+      index += 1;
+      continue;
+    }
+
     const heading = line.match(/^(#{1,9})[ \t]+(.+?)\s*$/);
     if (heading) {
       parsedBlocks.push({
@@ -306,7 +312,30 @@ function buildBlockMap(
 }
 
 function normalizeMarkdown(markdown: string): string {
-  return markdown.replace(/\r\n?/g, '\n').trim();
+  let text = markdown.replace(/\r\n?/g, '\n').trim();
+
+  // Strip YAML frontmatter (common in docling / marker output)
+  text = text.replace(/^---\n[\s\S]*?\n---\n?/, '');
+
+  // Strip common HTML tags that external converters emit (<br>, <div>, <p>, <span>, etc.)
+  // Preserve content inside tags, only remove the tags themselves.
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/?(div|p|span|section|article|header|footer|main|nav|aside)\b[^>]*>/gi, '');
+
+  // Convert image syntax ![alt](url) to linked text [🖼 alt](url)
+  // Feishu block API does not support inline images; degrade to a clickable link.
+  text = text.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, alt: string, url: string) => {
+    const label = alt.length > 0 ? alt : 'image';
+    return `[${label}](${url})`;
+  });
+
+  // Convert task list checkboxes to bullet-compatible markers
+  // - [ ] todo  →  - ☐ todo
+  // - [x] done  →  - ☑ done
+  text = text.replace(/^(\s*[-*+])\s+\[ \]/gm, '$1 ☐');
+  text = text.replace(/^(\s*[-*+])\s+\[[xX]\]/gm, '$1 ☑');
+
+  return text.trim();
 }
 
 function summarizeParsedBlocks(blocks: ParsedMarkdownBlock[]): MarkdownParseResult['stats'] {
