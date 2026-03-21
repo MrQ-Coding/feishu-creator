@@ -4,27 +4,42 @@
 
 ## 当前包含的 skill
 
-### `feishu-creator-doc-workflow`
+### `feishu-setup`
 
 适用场景：
 
 - 安装或初始化 `feishu-creator`
-- 把 MCP server 接入 Codex、Claude Desktop、Cursor 等客户端
-- 验证鉴权、启动状态、文档可读性
+- 把 MCP server 接入 Claude Code、Cursor、Codex 等客户端
+- 配置 `.env` 凭据、验证鉴权和启动状态
+- 共享 HTTP 部署和多用户 OAuth 配置
+
+目录：
+
+- [`feishu-setup/SKILL.md`](./feishu-setup/SKILL.md)
+- [`feishu-setup/references/setup-recipes.md`](./feishu-setup/references/setup-recipes.md)
+- [`feishu-setup/references/install-report-template.md`](./feishu-setup/references/install-report-template.md)
+- [`feishu-setup/references/http-multi-user-recipes.md`](./feishu-setup/references/http-multi-user-recipes.md)
+- [`feishu-setup/references/user-agent-mcp-protocol.md`](./feishu-setup/references/user-agent-mcp-protocol.md)
+
+### `feishu-creator-doc-workflow`
+
+适用场景：
+
 - 按标题执行 section 级替换、插入、复制、移动、删除
+- 创建新文档或 wiki 页面
+- 将本地 markdown 同步到飞书
+- 批量操作多篇文档
 
 目录：
 
 - [`feishu-creator-doc-workflow/SKILL.md`](./feishu-creator-doc-workflow/SKILL.md)
-- [`feishu-creator-doc-workflow/references/setup-recipes.md`](./feishu-creator-doc-workflow/references/setup-recipes.md)
 - [`feishu-creator-doc-workflow/references/operation-recipes.md`](./feishu-creator-doc-workflow/references/operation-recipes.md)
-- [`feishu-creator-doc-workflow/references/install-report-template.md`](./feishu-creator-doc-workflow/references/install-report-template.md)
 
 ### `feishu-doc-writer`
 
 适用场景：
 
-- 从零起草一篇飞书技术文档
+- 从零起草飞书文档（技术分析、方案设计、会议纪要、通用文档）
 - 重写现有草稿，让结构更清晰
 - 把零散笔记整理成有编号的技术说明
 - 根据代码阅读结果输出面向团队的中文说明文档
@@ -32,7 +47,9 @@
 目录：
 
 - [`feishu-doc-writer/SKILL.md`](./feishu-doc-writer/SKILL.md)
-- [`feishu-doc-writer/references/feishu-note-template.md`](./feishu-doc-writer/references/feishu-note-template.md)
+- [`feishu-doc-writer/references/template-technical.md`](./feishu-doc-writer/references/template-technical.md)
+- [`feishu-doc-writer/references/template-design.md`](./feishu-doc-writer/references/template-design.md)
+- [`feishu-doc-writer/references/template-meeting.md`](./feishu-doc-writer/references/template-meeting.md)
 - [`feishu-doc-writer/agents/openai.yaml`](./feishu-doc-writer/agents/openai.yaml)
 
 ### `feishu-style-extract`
@@ -40,7 +57,7 @@
 适用场景：
 
 - 从多篇飞书文档中分析个人或团队成员的写作风格
-- 为“按某人的文风写作”先生成一个可复用的风格画像
+- 为"按某人的文风写作"生成可复用的风格画像
 - 校准一组文档的语气、段落节奏、标题习惯和表达方式
 - 把分析结果保存回飞书，作为后续写作的风格基线
 
@@ -49,6 +66,15 @@
 - [`feishu-style-extract/SKILL.md`](./feishu-style-extract/SKILL.md)
 - [`feishu-style-extract/references/style-profile-template.md`](./feishu-style-extract/references/style-profile-template.md)
 - [`feishu-style-extract/agents/openai.yaml`](./feishu-style-extract/agents/openai.yaml)
+
+## Skill 之间的协作关系
+
+```
+feishu-setup          → 安装配置完成后，交给 doc-workflow
+feishu-doc-workflow   → 文档操作（CRUD），需要写内容时调用 doc-writer
+feishu-doc-writer     → 写作内容，需要风格时调用 style-extract
+feishu-style-extract  → 风格提取，结果保存后供 doc-writer 复用
+```
 
 ## 使用方式
 
