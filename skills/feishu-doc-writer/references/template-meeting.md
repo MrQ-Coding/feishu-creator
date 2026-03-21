@@ -1,19 +1,17 @@
-# Meeting Notes Template
+# 会议纪要模板
 
-## 1. Recommended Top-Level Structure
-
-Default skeleton:
+## 1. 推荐章节骨架
 
 1. `一、会议信息`
 2. `二、议题与结论`
 3. `三、待办事项`
-4. `四、备注`（optional）
+4. `四、备注`（可选）
 
-## 2. Section Writing Pattern
+## 2. 各章节写作要点
 
 ### 会议信息
 
-Brief metadata block:
+简要元数据：
 
 - **日期**: YYYY-MM-DD
 - **参会人**: 列出关键参与者
@@ -21,34 +19,34 @@ Brief metadata block:
 
 ### 议题与结论
 
-For each topic discussed:
+每个讨论主题按以下结构：
 
 1. **议题**: 简要描述讨论的问题
-2. **讨论要点**: 2-3 个关键观点或争论点（bullet list）
+2. **讨论要点**: 2-3 个关键观点或争论点（列表）
 3. **结论**: 明确的决定或共识
 
-Number each topic (`1.1`, `1.2`, etc.) when there are multiple.
+多个议题时使用子编号（`1.1`、`1.2`）。
 
 ### 待办事项
 
-Use a checklist format:
+使用清单格式：
 
 - [ ] 具体任务 — 负责人 — 截止日期
 - [ ] 具体任务 — 负责人 — 截止日期
 
-Each item must have: what, who, when.
+每条待办必须包含：做什么、谁负责、何时完成。
 
 ### 备注
 
-Optional section for:
+可选章节，用于：
 
-- Links to related documents or resources.
-- Unresolved questions for follow-up.
-- Context that didn't fit in the main discussion.
+- 相关文档或资源链接。
+- 未解决的问题，留待后续跟进。
+- 正文中未展开的补充背景。
 
-## 3. Quick Reminders
+## 3. 注意事项
 
-- Conclusions over process: record what was decided, not every word said.
-- Every action item needs an owner and a deadline.
-- Keep it short — meeting notes should be scannable in under 2 minutes.
-- Use the attendees' actual names, not roles.
+- 记结论不记过程：记录决定了什么，不要逐字记录发言。
+- 每条待办必须有负责人和截止日期。
+- 保持简短——会议纪要应在 2 分钟内扫读完毕。
+- 用参会人的真实姓名，不用角色代替。

@@ -16,10 +16,9 @@
 目录：
 
 - [`feishu-setup/SKILL.md`](./feishu-setup/SKILL.md)
-- [`feishu-setup/references/setup-recipes.md`](./feishu-setup/references/setup-recipes.md)
-- [`feishu-setup/references/install-report-template.md`](./feishu-setup/references/install-report-template.md)
 - [`feishu-setup/references/http-multi-user-recipes.md`](./feishu-setup/references/http-multi-user-recipes.md)
 - [`feishu-setup/references/user-agent-mcp-protocol.md`](./feishu-setup/references/user-agent-mcp-protocol.md)
+- [`feishu-setup/agents/openai.yaml`](./feishu-setup/agents/openai.yaml)
 
 ### `feishu-creator-doc-workflow`
 
@@ -29,11 +28,12 @@
 - 创建新文档或 wiki 页面
 - 将本地 markdown 同步到飞书
 - 批量操作多篇文档
+- 图表渲染与插入、表格操作
 
 目录：
 
 - [`feishu-creator-doc-workflow/SKILL.md`](./feishu-creator-doc-workflow/SKILL.md)
-- [`feishu-creator-doc-workflow/references/operation-recipes.md`](./feishu-creator-doc-workflow/references/operation-recipes.md)
+- [`feishu-creator-doc-workflow/agents/openai.yaml`](./feishu-creator-doc-workflow/agents/openai.yaml)
 
 ### `feishu-doc-writer`
 
@@ -50,6 +50,7 @@
 - [`feishu-doc-writer/references/template-technical.md`](./feishu-doc-writer/references/template-technical.md)
 - [`feishu-doc-writer/references/template-design.md`](./feishu-doc-writer/references/template-design.md)
 - [`feishu-doc-writer/references/template-meeting.md`](./feishu-doc-writer/references/template-meeting.md)
+- [`feishu-doc-writer/references/template-general.md`](./feishu-doc-writer/references/template-general.md)
 - [`feishu-doc-writer/agents/openai.yaml`](./feishu-doc-writer/agents/openai.yaml)
 
 ### `feishu-style-extract`

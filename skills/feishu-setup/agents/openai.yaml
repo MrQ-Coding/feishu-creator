@@ -1,0 +1,4 @@
+interface:
+  display_name: "飞书 Creator 安装助手"
+  short_description: "安装、配置、验证 feishu-creator MCP 服务，接入各类 AI 客户端"
+  default_prompt: "使用 $feishu-setup 完成 feishu-creator 的安装、环境配置和启动验证。检查 Node 版本，执行 npm install 和 build，配置 .env 凭据，逐步验证连通性和鉴权，输出安装报告。"

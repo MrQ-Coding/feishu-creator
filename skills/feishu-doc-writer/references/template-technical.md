@@ -1,8 +1,6 @@
-# Feishu Technical Note Template
+# 技术分析模板
 
-## 1. Recommended Top-Level Structure
-
-Default skeleton:
+## 1. 推荐章节骨架
 
 1. `一、概览`
 2. `二、概念介绍`
@@ -11,48 +9,48 @@ Default skeleton:
 5. `五、关键子流程`
 6. `六、总结`
 
-## 2. Section Writing Pattern
+## 2. 章节写作模式
 
-Default micro-pattern:
+每节默认按以下节奏推进：
 
-1. Overview line (`概览：...`)
-2. Main path explanation (ordered steps)
-3. Evidence (small code excerpt, command output, or logs)
-4. Transition sentence (`这一步最终会进入...`)
+1. 概述行（`概览：...`）
+2. 主路径说明（有序步骤）
+3. 证据（精简代码片段、命令输出或日志）
+4. 衔接句（`这一步最终会进入...`）
 
-## 3. Source Snippet Pattern
+## 3. 源码片段格式
 
-Path:
+路径：
 
 ```text
 frameworks/base/services/core/java/com/android/server/wm/RootWindowContainer.java
 ```
 
-Snippet:
+片段：
 
 ```java
 // frameworks/base/services/core/java/com/android/server/wm/RootWindowContainer.java
 void startHomeOnAllDisplays(...) {
-    // key lines only
+    // 只保留关键行
 }
 ```
 
-Proof:
+证明：
 
 ```text
 这段逻辑证明主流程会先遍历显示设备，随后再调用目标启动入口方法。
 ```
 
-## 4. Comparison Section Pattern
+## 4. 对比章节格式
 
-Use `term + short explanation` bullets:
+使用「术语 + 简短解释」列表：
 
 - **同步流程**: 调用链在当前线程内连续推进，便于直接定位下一跳。
 - **异步流程**: 通过消息或回调转交执行，需要额外确认触发点与时序。
 
-## 5. Test Or Validation Report Pattern
+## 5. 测试/验证报告格式
 
-Default structure:
+骨架：
 
 1. `一、测试结论`
 2. `二、验证范围`
@@ -61,21 +59,21 @@ Default structure:
 5. `五、关键问题`
 6. `六、建议`
 
-`三、验证方式` should label the evidence source:
+`三、验证方式` 应标注证据来源：
 
-- MCP tool calls
-- local service / script execution
-- code reading inference
+- MCP 工具调用
+- 本地服务 / 脚本执行
+- 代码阅读推理
 
-Each problem section:
+每条问题按以下结构组织：
 
-1. Observed fact (`现象：...`)
-2. Evidence (`证据：返回结果 / 截图 / 关键字段`)
-3. Inference when needed (`推断：...`)
-4. Recommendation (`建议：...`)
+1. 现象（`现象：...`）
+2. 证据（`证据：返回结果 / 截图 / 关键字段`）
+3. 推断（`推断：...`，视情况添加）
+4. 建议（`建议：...`）
 
-## 6. Quick Reminders
+## 6. 注意事项
 
-- Lead with the main path, then expand into branches.
-- Keep snippets short; do not paste whole files.
-- Use inline code for stable identifiers and source paths, not ordinary Chinese words.
+- 先写主路径，再展开分支。
+- 片段精简，不要粘贴整个文件。
+- 行内代码仅用于标识符和源码路径，不用于普通中文词汇。

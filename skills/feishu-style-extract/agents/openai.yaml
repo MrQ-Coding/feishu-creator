@@ -1,4 +1,4 @@
 interface:
   display_name: "飞书文风提取助手"
-  short_description: "从飞书文档中提炼写作风格画像，并生成可复用的文风规则"
-  default_prompt: "Use $feishu-style-extract to analyze representative Feishu docs, assess sample quality, build a reusable writing-style profile, and optionally save the approved profile back into Feishu."
+  short_description: "从飞书文档中提炼写作风格画像，生成可复用的文风规则"
+  default_prompt: "使用 $feishu-style-extract 分析飞书文档样本，评估样本质量，生成可复用的写作风格画像。优先尝试 resolve_style_profile 快速路径，必要时执行完整提取，确认后保存回飞书。"

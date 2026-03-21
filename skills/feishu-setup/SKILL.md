@@ -3,35 +3,28 @@ name: feishu-setup
 description: Install, build, configure, and health-check feishu-creator. Use when the user asks to install feishu-creator, wire it into an MCP client (Claude Code, Cursor, Codex, etc.), set up .env credentials, verify auth, or troubleshoot startup failures.
 ---
 
-# Feishu Setup
+# 飞书 Creator 安装配置
 
-Use this skill when the task is about getting feishu-creator running — install, build, env config, client wiring, or startup verification. Once the server is healthy, hand off to `feishu-doc-workflow` for document operations.
+当任务涉及 feishu-creator 的安装、构建、环境配置、客户端接入或启动验证时使用本 skill。服务健康后，交给 `feishu-doc-workflow` 处理文档操作。
 
-## Route By Intent
+## 工作流
 
-- Fresh install or rebuild: follow [references/setup-recipes.md](references/setup-recipes.md).
-- Shared HTTP deployment or multi-user OAuth: follow [references/http-multi-user-recipes.md](references/http-multi-user-recipes.md).
-- User-agent / gateway protocol questions: follow [references/user-agent-mcp-protocol.md](references/user-agent-mcp-protocol.md).
-- Reporting setup results to the user: use [references/install-report-template.md](references/install-report-template.md).
+### 1. 前置检查
 
-## Workflow
+- 确认 `node >= 20.17.0` 和 `npm` 可用。
+- 需要图表渲染时检查 `dot`（Graphviz）和 `plantuml`。
+- 仓库不存在时通过 `git` 克隆或引导用户获取。
 
-### 1. Preflight
-
-- Confirm `node >= 20.17.0` and `npm` are available.
-- Check `dot` (Graphviz) and `plantuml` when diagram rendering is needed.
-- If the repo is missing, clone or guide the user to obtain it.
-
-### 2. Install and Build
+### 2. 安装与构建
 
 1. `npm install`
-2. Create `.env` from `.env.example` if `.env` is missing.
+2. 若 `.env` 不存在，从 `.env.example` 复制一份。
 3. `npm run build`
-4. Prepare the MCP client entry: `node /absolute/path/to/dist/index.js --stdio`
+4. 准备 MCP 客户端入口：`node /absolute/path/to/dist/index.js --stdio`
 
-### 3. Configure Credentials
+### 3. 配置凭据
 
-Minimum `.env`:
+最小 `.env` 配置：
 
 ```dotenv
 FEISHU_APP_ID=cli_xxx
@@ -40,41 +33,63 @@ FEISHU_AUTH_TYPE=tenant
 MCP_MODE=auto
 ```
 
-Do not block on missing credentials if the user only wants to verify the build. Note which values are still needed and move on.
+用户只想验证构建时不要阻塞在缺失凭据上，记录哪些值仍需填写，继续后续步骤。
 
-### 4. Verify
+### 4. 验证
 
-Run these MCP tool calls in order. Stop at the first failure and diagnose:
+按顺序执行以下 MCP 工具调用，首次失败时停下诊断：
 
-| Step | Tool call | Pass condition |
-|------|-----------|----------------|
-| 1 | `ping` | Returns success |
-| 2 | `auth_status` | Shows configured app ID and auth type |
-| 3 | `auth_status` with `fetchToken: true` | Returns a valid access token |
-| 4 | `get_document_info` on a known doc | Returns document metadata |
+| 步骤 | 工具调用 | 通过条件 |
+|------|----------|----------|
+| 1 | `ping` | 返回成功 |
+| 2 | `auth_status` | 显示已配置的 App ID 和鉴权类型 |
+| 3 | `auth_status`（`fetchToken: true`） | 返回有效的 access token |
+| 4 | `get_document_info`（已知文档） | 返回文档元信息 |
 
-**Diagnosis guide:**
+**故障诊断：**
 
-| Failure point | Likely cause | Fix |
-|---------------|-------------|-----|
-| Step 1 fails | MCP transport not connected | Check client config path, rebuild |
-| Step 2 fails | `.env` not loaded or missing vars | Verify `.env` exists and is complete |
-| Step 3 fails | Wrong app credentials or app not approved | Check App ID/Secret in Feishu console |
-| Step 4 fails | Insufficient app permissions or wrong doc ID | Check Feishu app scopes, doc sharing |
+| 失败步骤 | 可能原因 | 修复方法 |
+|----------|----------|----------|
+| 步骤 1 | MCP 传输未连接 | 检查客户端配置路径，重新构建 |
+| 步骤 2 | `.env` 未加载或变量缺失 | 确认 `.env` 存在且内容完整 |
+| 步骤 3 | App 凭据错误或应用未审批 | 在飞书开放平台检查 App ID/Secret |
+| 步骤 4 | 应用权限不足或文档 ID 错误 | 检查飞书应用权限范围、文档分享设置 |
 
-### 5. Report
+### 5. 安装报告
 
-Use the template in [references/install-report-template.md](references/install-report-template.md). Always include:
+向用户报告安装结果时包含以下内容：
 
-- Absolute file paths for generated/updated files
-- Whether proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`) were detected
-- Explicit list of missing credentials or prerequisites
-- Concrete next-step recommendation
+- **安装结果**：成功/失败
+- **环境**：Node 版本、操作系统
+- **仓库位置**：使用绝对路径
+- **执行结果**：install 和 build 的输出摘要
+- **生成或更新的文件**：列出绝对路径
+- **启动冒烟测试**：验证步骤的结果
+- **仍需手动填写**：缺失的凭据或前置条件
+- **下一步建议**：具体的后续操作
 
-## Guardrails
+注意标注是否检测到代理环境变量（`HTTP_PROXY`、`HTTPS_PROXY`）。
 
-- Keep absolute file paths when reporting files.
-- Prefer `MCP_MODE=auto` with `--stdio` unless the user explicitly wants HTTP.
-- Treat Graphviz and PlantUML readiness as part of install health only when diagram features are requested.
-- Do not dump raw MCP tool output — always add a short explanatory sentence.
-- In shared HTTP mode, clarify that `MCP_HTTP_AUTH_TOKEN` is transport access control, not user identity.
+## HTTP 多用户部署
+
+当用户需要将 feishu-creator 部署为共享 HTTP 服务时，参考 [references/http-multi-user-recipes.md](references/http-multi-user-recipes.md)。
+
+核心要点：
+
+- `MCP_HTTP_AUTH_TOKEN` 仅保护 MCP 端点的访问权限，不代表终端用户身份。
+- 每个 MCP HTTP 会话拥有独立的 `AppContext` 和 `FeishuAuthManager`。
+- 身份分三层：应用用户身份（你的系统）→ 飞书授权（OAuth）→ 业务归属（产物所有权）。
+- 调用方通过会话初始化 header 注入用户级飞书 token。
+
+## 用户代理 / 网关协议
+
+当调用方是用户控制的 agent 或上游网关时，参考 [references/user-agent-mcp-protocol.md](references/user-agent-mcp-protocol.md)。
+
+## 护栏
+
+- 报告文件时始终使用绝对路径。
+- 默认 `MCP_MODE=auto` + `--stdio`，除非用户明确要求 HTTP。
+- 仅在用户请求图表功能时将 Graphviz/PlantUML 纳入健康检查。
+- 不要直接输出原始 MCP 工具返回——附上一句解释说明。
+- 共享 HTTP 模式下，明确说明 `MCP_HTTP_AUTH_TOKEN` 是传输层访问控制，不是用户身份。
+- 不要要求终端用户在 MCP 配置中填写原始账号密码。

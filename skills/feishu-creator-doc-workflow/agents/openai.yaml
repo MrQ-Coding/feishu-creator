@@ -1,0 +1,4 @@
+interface:
+  display_name: "飞书文档操作助手"
+  short_description: "通过 MCP 工具安全地创建、编辑、重组和批量管理飞书文档"
+  default_prompt: "使用 $feishu-creator-doc-workflow 执行飞书文档操作。先查后改，使用最高层级编辑原语，操作后验证结果。支持创建文档、更新章节、Markdown 同步、重组结构和批量操作。"

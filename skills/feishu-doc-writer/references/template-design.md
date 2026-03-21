@@ -1,41 +1,39 @@
-# Design Proposal Template
+# 方案设计模板
 
-## 1. Recommended Top-Level Structure
-
-Default skeleton:
+## 1. 推荐章节骨架
 
 1. `一、背景与目标`
 2. `二、现状分析`
 3. `三、方案设计`
-4. `四、方案对比`（when multiple options exist）
+4. `四、方案对比`（存在多个候选方案时）
 5. `五、实施计划`
 6. `六、风险与应对`
 7. `七、总结`
 
-## 2. Section Writing Pattern
+## 2. 各章节写作要点
 
 ### 背景与目标
 
-- State the problem in 2-3 sentences.
-- List concrete goals as numbered items.
-- Distinguish must-have from nice-to-have.
+- 用 2-3 句话描述问题。
+- 用编号列表列出具体目标。
+- 区分必须实现和可选实现。
 
 ### 现状分析
 
-- Describe current architecture or workflow briefly.
-- Highlight the specific pain points this proposal addresses.
-- Use a diagram (`create_graphviz_diagram_block`) when the current architecture is non-trivial.
+- 简要描述当前架构或工作流。
+- 突出本方案要解决的痛点。
+- 架构较复杂时配一张架构图（`create_graphviz_diagram_block`）。
 
 ### 方案设计
 
-- Lead with the core idea in one sentence.
-- Break down into sub-sections by component or layer.
-- For each component: what it does → how it works → why this approach.
-- Include a high-level architecture diagram when helpful.
+- 第一句话给出核心思路。
+- 按组件或层次拆分子章节。
+- 每个组件说明：做什么 → 怎么做 → 为什么这样做。
+- 必要时附高层架构图。
 
 ### 方案对比
 
-Use a comparison table:
+使用对比表格：
 
 | 维度 | 方案 A | 方案 B |
 |------|--------|--------|
@@ -43,24 +41,24 @@ Use a comparison table:
 | 性能 | ... | ... |
 | 可维护性 | ... | ... |
 
-End with a clear recommendation and reasoning.
+表格后给出明确推荐和理由。
 
 ### 实施计划
 
-- Break into phases with concrete deliverables.
-- Use ordered list for sequential steps.
-- Note dependencies between phases.
+- 按阶段划分，每个阶段有具体交付物。
+- 顺序步骤用有序列表。
+- 标注阶段间的依赖关系。
 
 ### 风险与应对
 
-Use `risk + mitigation` pairs:
+使用「风险 + 对策」配对：
 
 - **风险**: 描述具体风险
   **应对**: 具体缓解措施
 
-## 3. Quick Reminders
+## 3. 注意事项
 
-- Lead with the recommendation, not the analysis.
-- Keep diagrams focused — one concept per diagram.
-- Quantify where possible (latency, cost, effort).
-- Separate facts from opinions explicitly.
+- 先给结论再展开分析。
+- 图表聚焦——一张图说明一个概念。
+- 尽量量化（延迟、成本、工作量）。
+- 事实与观点明确区分。

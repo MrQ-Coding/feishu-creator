@@ -3,112 +3,112 @@ name: feishu-style-extract
 description: Analyze representative Feishu docs or wiki notes, extract a reusable writing-style profile, and optionally save the profile back into Feishu. Use when the user asks to analyze their writing style, imitate an existing author voice, keep document tone consistent, or build a style guide from Feishu content.
 ---
 
-# Feishu Style Extract
+# 飞书文风提取助手
 
-Use this skill when the main task is inferring a person's writing style from existing Feishu documents and turning it into a reusable profile. For applying an already-saved profile during drafting, use `feishu-doc-writer` instead (it calls `resolve_style_profile` automatically).
+当主要任务是从已有飞书文档中提炼写作风格并生成可复用画像时使用本 skill。如果只是应用已有画像来写作，请使用 `feishu-doc-writer`（它会自动调用 `resolve_style_profile`）。
 
-## When To Use
+## 适用场景
 
-- User says "分析一下我的写作风格", "总结我的文风", "帮我生成风格画像"
-- User wants to imitate an author voice based on Feishu docs
-- User wants to unify tone across a document set before drafting
-- User wants to preserve an existing author's style during rewrites
+- 用户说"分析一下我的写作风格"、"总结我的文风"、"帮我生成风格画像"
+- 需要模仿某人的文风进行写作
+- 需要在一组文档间统一语气后再起草新内容
+- 需要在改写或扩展时保留原作者的风格
 
-## Workflow
+## 工作流
 
-### Fast Path (try first)
+### 快速路径（优先尝试）
 
-1. Call `resolve_style_profile`.
-2. If a profile is found and the user isn't asking for a refresh → return it. Done.
-3. If found but the user wants to update it → continue to Full Extraction, use the existing profile as a baseline.
+1. 调用 `resolve_style_profile`。
+2. 命中且用户未要求刷新 → 直接返回画像，完成。
+3. 命中但用户要求更新 → 进入完整提取流程，以现有画像为基线。
 
-### Full Extraction
+### 完整提取
 
-#### Step 1: Determine scope
+#### 第 1 步：确定分析范围
 
-Resolve one of:
+解析以下场景之一：
 
-- **Specific documents**: User provides 1-N document URLs or IDs. Use them directly.
-- **Wiki space or subtree**: Discover candidates via `get_feishu_wiki_tree`.
-- **Fuzzy request** ("分析我的文风"): Ask for 3-5 representative documents unless the target set is obvious from context.
+- **指定文档**：用户提供了 1-N 个文档 URL 或 ID，直接使用。
+- **Wiki 空间或子树**：通过 `get_feishu_wiki_tree` 发现候选文档。
+- **模糊请求**（"分析我的文风"）：请用户提供 3-5 篇代表性文档，除非目标集合在上下文中已经明确。
 
-#### Step 2: Gather and rate samples
+#### 第 2 步：收集并评级样本
 
-For each candidate:
+对每个候选文档：
 
-1. `get_document_info` → normalize the page.
-2. `export_document_to_markdown` → read content.
-3. Fall back to `get_document_blocks` when markdown is insufficient.
+1. `get_document_info` → 规范化页面信息。
+2. `export_document_to_markdown` → 读取内容。
+3. markdown 不够用时回退到 `get_document_blocks`。
 
-Rate each sample:
+对每个样本评级：
 
-- **Strong**: original, substantial prose, representative tone.
-- **Medium**: partially representative, narrow topic or structure.
-- **Weak**: too short, templated, copied, or unclear authorship.
+- **强**：原创、有实质性散文内容、语气有代表性。
+- **中**：部分有代表性，但主题或结构较窄。
+- **弱**：太短、模板化、复制内容、作者不明确。
 
-If fewer than 3 credible samples remain, state low confidence and ask for more.
+可信样本不足 3 篇时，明确告知置信度低并请求更多样本。
 
-Sampling limits:
+采样规则：
 
-- Prefer 5-10 documents.
-- Favor original writing over copied material.
-- Favor topic diversity over volume.
-- Down-rank documents dominated by code, tables, or screenshots.
+- 优选 5-10 篇文档。
+- 偏好原创写作而非复制素材。
+- 偏好主题多样性而非数量。
+- 降权以代码块、表格、截图为主的文档。
 
-#### Step 3: Analyze style dimensions
+#### 第 3 步：分析风格维度
 
-Analyze across four dimensions:
+从四个维度分析：
 
-| Dimension | What to look for |
-|-----------|-----------------|
+| 维度 | 关注要素 |
+|------|----------|
 | **词汇** | 正式度、术语密度、偏好词、中英混用习惯 |
 | **句式** | 平均句长、从句复杂度、段落密度、列表使用、节奏感 |
 | **语气** | 人称、自信度、教学感 vs 对话感、情感色温 |
 | **结构** | 开头模式、标题风格、示例密度、格式偏好 |
 
-Separate stable style traits from topic-specific effects.
+将稳定的风格特征与主题特定效应区分开。React 相关文档中的高频术语不一定代表作者的通用写作风格。
 
-#### Step 4: Generate profile
+#### 第 4 步：生成画像
 
-Use [references/style-profile-template.md](references/style-profile-template.md) as the output shape. Key sections:
+使用 [references/style-profile-template.md](references/style-profile-template.md) 作为输出模板。关键部分：
 
-- One-sentence overall characterization
-- Sample scope and selection rationale
-- Findings per dimension
-- `风格指纹`: 5+ concrete, reusable drafting rules
-- One representative excerpt with annotation
-- `使用方式` section
+- 一句话整体定性
+- 样本范围与选择理由
+- 各维度发现
+- `风格指纹`：5 条以上具体、可复用的写作规则
+- 一段代表性摘录及批注
+- `使用方式` 说明
 
-#### Step 5: Confirm and save
+#### 第 5 步：确认并保存
 
-1. **Present the draft** before saving. Invite corrections.
-2. Distinguish current style (what samples show) from target style (what user wants).
-3. **Save to Feishu** (default unless user declines):
-   - New profile: `create_document` + `import_markdown_to_document`
-   - Update existing: `upsert_section`
-   - Title convention: `✍️ 写作风格画像 - {类型}`
+1. **先展示草稿**再保存，邀请用户修正。
+2. 区分当前风格（样本呈现的）和目标风格（用户想要的）。
+3. **保存到飞书**（默认行为，用户明确拒绝时跳过）：
+   - 新建画像：`create_document` + `import_markdown_to_document`
+   - 更新已有：`upsert_section`
+   - 标题约定：`✍️ 写作风格画像 - {类型}`
 
-## Error Handling
+## 错误处理
 
-| Situation | Action |
-|-----------|--------|
-| Document not found | Skip, note the miss, continue |
-| Permission denied | Note in report, ask for another sample |
-| Empty markdown export | Fall back to `get_document_blocks` |
-| Too many candidates | Sample top 5-10, explain basis |
-| Too few credible samples | State low confidence, ask for more |
-| Mixed authorship | Confirm ownership before finalizing |
-| Save-back fails | Present profile in chat, note write-back incomplete |
+| 情况 | 处理方式 |
+|------|----------|
+| 文档未找到 | 跳过，记录未命中，继续处理其余样本 |
+| 权限不足 | 在报告中注明，请求用户提供其他样本 |
+| Markdown 导出为空 | 回退到 `get_document_blocks` |
+| 候选文档过多 | 采样前 5-10 篇，说明采样依据 |
+| 可信样本不足 | 说明置信度低，请求更多样本 |
+| 混合作者 | 确认文档归属后再生成最终画像 |
+| 保存失败 | 在对话中展示画像，注明写回未完成 |
 
-## Guardrails
+## 护栏
 
-- Describe how the author writes; do not grade the style unless asked.
-- Do not overfit to one sample. Call out single-document traits.
-- Distinguish observations from inferences (`常用编号标题` is observation; `重视教学感` is inference).
-- Avoid fake precision — use `倾向于`, `明显偏好`, `经常出现`.
-- Do not save until the user has seen and accepted the draft.
-- In shared HTTP mode, require a stable owner identity before attaching profile ownership.
+- 描述作者怎么写，不评判好坏（除非用户要求）。
+- 不要过拟合到单篇样本——标注仅出现在一篇文档中的特征。
+- 区分观察和推断：`常用编号标题` 是观察；`重视教学感` 是推断。
+- 避免伪精确——使用 `倾向于`、`明显偏好`、`经常出现`。
+- 用户确认前不保存画像。
+- 共享 HTTP 模式下，需要稳定的 owner 身份才能关联画像归属。
 
-## References
+## 参考模板
 
-- [references/style-profile-template.md](references/style-profile-template.md) — default output shape and review checklist.
+- [references/style-profile-template.md](references/style-profile-template.md) — 画像输出模板和审查清单。

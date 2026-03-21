@@ -1,4 +1,4 @@
 interface:
   display_name: "飞书文档编写助手"
-  short_description: "面向技术团队的飞书技术文档撰写与改写助手"
-  default_prompt: "Use $feishu-doc-writer to draft or rewrite a structured Feishu technical note in Chinese with clear numbered sections and source-backed explanations."
+  short_description: "支持多种文档类型（技术分析、方案设计、会议纪要、通用文档）的飞书文档撰写与改写助手"
+  default_prompt: "使用 $feishu-doc-writer 起草或改写飞书文档。先判断文档类型，选择对应模板，按编号标题结构输出清晰的中文内容。写完后可衔接 $feishu-doc-workflow 发布到飞书。"
