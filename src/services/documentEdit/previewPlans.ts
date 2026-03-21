@@ -18,7 +18,6 @@ import type {
   InsertBeforeHeadingInput,
   PreviewBlockSummary,
   PreviewCreateBlockSummary,
-  PreviewDeletePlan,
   PreviewEditPlanInput,
   PreviewEditPlanResult,
   PreviewInsertionTarget,

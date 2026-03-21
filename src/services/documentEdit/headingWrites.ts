@@ -297,6 +297,7 @@ export async function replaceSectionWithOrderedListCore(
       `Delete old section content failed; rollback applied: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 
@@ -382,6 +383,7 @@ async function replaceSectionContent(
       `Delete old section content failed; rollback applied: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 

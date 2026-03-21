@@ -101,6 +101,7 @@ export async function moveSectionCore(
       `Delete source section failed; rollback applied: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 
@@ -593,6 +594,7 @@ async function copyImageBlock(
       `Image reconstruction failed for source block ${sourceBlockId}: ${
         error instanceof Error ? error.message : String(error)
       }`,
+      { cause: error },
     );
   }
 }
@@ -639,7 +641,7 @@ function parseFileNameFromContentDisposition(
   if (utf8Match?.[1]) {
     return decodeURIComponent(utf8Match[1].trim()).replaceAll('/', '_');
   }
-  const simpleMatch = contentDisposition.match(/filename=\"?([^\";]+)\"?/i);
+  const simpleMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
   if (simpleMatch?.[1]) {
     return simpleMatch[1].trim().replaceAll('/', '_');
   }

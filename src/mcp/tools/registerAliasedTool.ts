@@ -6,6 +6,8 @@ interface ToolVariant {
   description: string;
 }
 
+const registerLegacyAliases = process.env.FEISHU_REGISTER_LEGACY_ALIASES !== "false";
+
 export function registerAliasedTool<Schema extends z.ZodRawShape>(
   server: McpServer,
   variants: ToolVariant[],
@@ -13,9 +15,10 @@ export function registerAliasedTool<Schema extends z.ZodRawShape>(
   handler: (
     args: z.infer<z.ZodObject<Schema>>,
     extra?: unknown,
-  ) => unknown | Promise<unknown>,
+  ) => Promise<unknown>,
 ): void {
-  for (const variant of variants) {
+  for (const [index, variant] of variants.entries()) {
+    if (index > 0 && !registerLegacyAliases) continue;
     server.tool(
       variant.name,
       variant.description,

@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AppContext } from "../appContext.js";
 import { registerAuthTools } from "./tools/authTools.js";
@@ -8,9 +9,12 @@ import { registerDocumentMarkdownTools } from "./tools/documentMarkdownTools.js"
 import { registerWikiTools } from "./tools/wikiTools.js";
 import { registerStyleProfileTools } from "./tools/styleProfileTools.js";
 
+const require = createRequire(import.meta.url);
+const { version } = require("../../package.json") as { version: string };
+
 export const serverInfo = {
   name: "feishu-creator",
-  version: "0.1.0",
+  version,
 };
 
 export function createMcpServer(context: AppContext): McpServer {

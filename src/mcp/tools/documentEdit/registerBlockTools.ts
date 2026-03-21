@@ -290,14 +290,16 @@ export function registerBlockTools(server: McpServer, context: AppContext): void
         .number()
         .int()
         .positive()
+        .max(500)
         .optional()
-        .describe("Optional number of rows. If omitted, inferred from cells."),
+        .describe("Optional number of rows (max 500). If omitted, inferred from cells."),
       columnSize: z
         .number()
         .int()
         .positive()
+        .max(100)
         .optional()
-        .describe("Optional number of columns. If omitted, inferred from cells."),
+        .describe("Optional number of columns (max 100). If omitted, inferred from cells."),
       cells: tableCellsSchema,
       documentRevisionId: z
         .number()
@@ -477,14 +479,16 @@ export function registerBlockTools(server: McpServer, context: AppContext): void
         .number()
         .int()
         .positive()
+        .max(500)
         .optional()
-        .describe("Optional number of rows. If omitted, inferred from cells."),
+        .describe("Optional number of rows (max 500). If omitted, inferred from cells."),
       columnSize: z
         .number()
         .int()
         .positive()
+        .max(100)
         .optional()
-        .describe("Optional number of columns. If omitted, inferred from cells."),
+        .describe("Optional number of columns (max 100). If omitted, inferred from cells."),
       cells: tableCellsSchema,
       documentRevisionId: z
         .number()

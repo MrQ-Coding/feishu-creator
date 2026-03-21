@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import type { DocumentEditRuntime } from './context.js';
 import { extractBlockIds, normalizeOptionalIndex, normalizeRevisionId } from './helpers.js';
@@ -57,6 +57,11 @@ export async function uploadLocalImageCore(
   input: UploadLocalImageInput,
 ): Promise<UploadLocalImageResult> {
   const normalized = await normalizeUploadInput(input, normalizedDocumentId);
+  const fileStat = await stat(normalized.imagePath);
+  const MAX_IMAGE_SIZE = 100 * 1024 * 1024; // 100 MB
+  if (fileStat.size > MAX_IMAGE_SIZE) {
+    throw new Error(`Image file too large (${fileStat.size} bytes). Maximum allowed: ${MAX_IMAGE_SIZE} bytes.`);
+  }
   const imageBytes = await readFile(normalized.imagePath);
   const uploadResult = await uploadImageBytesCore(runtime, normalizedDocumentId, {
     imageBytes,

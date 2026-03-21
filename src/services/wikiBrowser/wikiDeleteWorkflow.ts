@@ -132,7 +132,7 @@ export async function resolveDeleteContext(
         currentContext.nodeToken))
   ) {
     return {
-      nodeToken: currentContext.nodeToken!,
+      nodeToken: currentContext.nodeToken,
       spaceId: currentContext.spaceId,
       title: input.title ?? currentContext.title,
     };

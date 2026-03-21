@@ -18,9 +18,11 @@ export function errorToolResult(
   toolName: string,
   error: unknown,
 ): {
+  isError: true;
   content: Array<{ type: "text"; text: string }>;
 } {
   return {
+    isError: true,
     content: [
       {
         type: "text",

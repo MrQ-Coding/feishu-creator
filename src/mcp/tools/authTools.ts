@@ -3,11 +3,7 @@ import { z } from "zod";
 import type { AppContext } from "../../appContext.js";
 import { persistUserEnv } from "../../feishu/userAuthEnv.js";
 import { errorToolResult, jsonToolResult, textToolResult } from "./toolResponse.js";
-
-function maskToken(token: string): string {
-  if (token.length <= 12) return "***";
-  return `${token.slice(0, 6)}...${token.slice(-4)}`;
-}
+import { maskToken, isLikelyTransportError } from "../../transport/helpers.js";
 
 const DEFAULT_ENV_FILE = ".env";
 
@@ -22,19 +18,6 @@ function getNetworkEnvSummary() {
     hasSslCertFile: Boolean(process.env.SSL_CERT_FILE),
     hasSslCertDir: Boolean(process.env.SSL_CERT_DIR),
   };
-}
-
-function isLikelyTransportError(message: string): boolean {
-  const lower = message.toLowerCase();
-  return [
-    "fetch failed",
-    "network",
-    "timeout",
-    "socket hang up",
-    "econnreset",
-    "etimedout",
-    "eai_again",
-  ].some((keyword) => lower.includes(keyword));
 }
 
 function buildTokenFetchHint(errorMessage: string): string | undefined {
@@ -60,7 +43,7 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
     {
       message: z.string().optional(),
     },
-    async ({ message }) => {
+    ({ message }) => {
       return textToolResult(message ? `pong: ${message}` : "pong");
     },
   );
@@ -118,7 +101,7 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
         ),
       state: z.string().optional().describe("Optional anti-CSRF state."),
     },
-    async ({ redirectUri, state }) => {
+    ({ redirectUri, state }) => {
       try {
         const defaultRedirectUri = `http://localhost:${context.config.server.port}/callback`;
         const effectiveState = context.authManager.issueUserAuthorizeState(state);
@@ -274,7 +257,7 @@ export function registerAuthTools(server: McpServer, context: AppContext): void 
     {
       authType: z.enum(["tenant", "user"]),
     },
-    async ({ authType }) => {
+    ({ authType }) => {
       try {
         const effectiveAuthType = context.authManager.setAuthTypeOverride(authType);
         return jsonToolResult({

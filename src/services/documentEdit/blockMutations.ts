@@ -2,19 +2,12 @@ import type { DocumentEditRuntime } from './context.js';
 import {
   buildUpdateTextElement,
   normalizeHeadingLevel,
-  normalizeOptionalIndex,
   normalizeOptionalNonNegativeInt,
   normalizeRequiredIndex,
   normalizeRevisionId,
   normalizeTextItems,
 } from './helpers.js';
 import { batchCreateBlocksCore, deleteChildrenRange } from './blockMutationPrimitives.js';
-import {
-  createTableCore,
-  getTableCore,
-  replaceTableCore,
-  updateTableCellCore,
-} from './tableMutations.js';
 import type {
   BatchUpdateBlockTextInput,
   BatchUpdateBlockTextResult,

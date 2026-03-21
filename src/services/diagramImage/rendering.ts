@@ -5,7 +5,6 @@ import os from "node:os";
 import path from "node:path";
 import type { AppConfig } from "../../config.js";
 import type {
-  DiagramImageFormat,
   NormalizedRenderInput,
   RenderGraphvizDiagramInput,
   RenderPlantUmlDiagramInput,
@@ -94,14 +93,23 @@ export async function runRendererCommand(
   const stderrChunks: Buffer[] = [];
 
   await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
+
     const child = spawn(command.command, command.args, {
       stdio: ["pipe", "pipe", "pipe"],
     });
 
     child.once("error", (error) => {
-      reject(
-        new Error(
-          `${command.label} is not available. Install it or set the matching env path. ${error.message}`,
+      settle(() =>
+        reject(
+          new Error(
+            `${command.label} is not available. Install it or set the matching env path. ${error.message}`,
+          ),
         ),
       );
     });
@@ -114,7 +122,7 @@ export async function runRendererCommand(
     });
     child.once("close", (code, signal) => {
       if (code === 0) {
-        resolve();
+        settle(() => resolve());
         return;
       }
       const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
@@ -123,7 +131,7 @@ export async function runRendererCommand(
         : signal
           ? `: terminated by signal ${signal}`
           : ".";
-      reject(new Error(`${command.label} exited with code ${code ?? "unknown"}${details}`));
+      settle(() => reject(new Error(`${command.label} exited with code ${code ?? "unknown"}${details}`)));
     });
 
     child.stdin.end(input, "utf8");

@@ -129,6 +129,7 @@ export class WikiBrowserDeletionService {
       if (!this.sessionManager.canRunHeadedBrowser()) {
         throw new Error(
           `Headless wiki deletion requires login for ${targetLabel}, but no GUI display is available for interactive recovery. Automatic lightweight profile bootstrap needs one visible login first. Prepare a logged-in browser profile under FEISHU_PLAYWRIGHT_USER_DATA_DIR and keep FEISHU_PLAYWRIGHT_HEADLESS=true. Screenshot: ${error.screenshotPath}`,
+          { cause: error },
         );
       }
 
@@ -143,6 +144,7 @@ export class WikiBrowserDeletionService {
         if (retryError instanceof LoginRequiredError) {
           throw new Error(
             `Feishu login recovery completed, but the headless session is still unavailable for ${targetLabel}. Screenshot: ${retryError.screenshotPath}`,
+            { cause: retryError },
           );
         }
         throw retryError;

@@ -156,7 +156,9 @@ export function createAppContext(
 
   const shutdown = async () => {
     clearInterval(cleanupTimer);
-    await wikiBrowserDeletionService.shutdown().catch(() => undefined);
+    await wikiBrowserDeletionService.shutdown().catch((err: unknown) => {
+      Logger.warn(`Wiki browser shutdown failed: ${err instanceof Error ? err.message : String(err)}`);
+    });
     authManager.stopBackgroundRefresh();
   };
 

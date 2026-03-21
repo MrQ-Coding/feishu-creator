@@ -499,7 +499,7 @@ export interface CopySectionResult {
   createdBlockIds: string[];
 }
 
-export interface MoveSectionInput extends CopySectionInput {}
+export type MoveSectionInput = CopySectionInput;
 
 export interface MoveSectionResult extends CopySectionResult {
   deletedCount: number;

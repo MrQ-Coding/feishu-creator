@@ -63,7 +63,8 @@ export function registerBatchTools(server: McpServer, context: AppContext): void
     children: z
       .array(z.record(z.unknown()))
       .min(1)
-      .describe('Block payload array for the current platform implementation. Today this accepts native Feishu docx block payloads.'),
+      .max(5000)
+      .describe('Block payload array for the current platform implementation. Today this accepts native Feishu docx block payloads. Max 5000 items.'),
     index: optionalIndexSchema(),
     ...chunkedWriteFields({
       resumeDescription: 'Skip the first N children, used for checkpoint resume.',

@@ -1,6 +1,7 @@
 import type { AppConfig } from "../config.js";
 import { FeishuAuthManager } from "./authManager.js";
 import { Logger } from "../logger.js";
+import { TRANSIENT_ERROR_KEYWORDS } from "../transport/helpers.js";
 
 type RequestMethod = "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
 
@@ -81,7 +82,7 @@ export class FeishuClient {
     options?: RequestOptions,
   ): Promise<T> {
     return this.semaphore.withLock(() =>
-      this.requestWithRetry<T>(path, method, body, query, options),
+      this.withRetry(path, () => this.requestOnce<T>(path, method, body, query, options), options),
     );
   }
 
@@ -93,7 +94,7 @@ export class FeishuClient {
     options?: RequestOptions,
   ): Promise<FeishuBinaryResponse> {
     return this.semaphore.withLock(() =>
-      this.requestBinaryWithRetry(path, method, body, query, options),
+      this.withRetry(path, () => this.requestBinaryOnce(path, method, body, query, options), options),
     );
   }
 
@@ -113,20 +114,18 @@ export class FeishuClient {
     return url.toString();
   }
 
-  private async requestWithRetry<T>(
+  private async withRetry<T>(
     path: string,
-    method: RequestMethod,
-    body?: unknown,
-    query?: Record<string, string | number | boolean | undefined>,
+    attempt: () => Promise<T>,
     options?: RequestOptions,
   ): Promise<T> {
     const maxAttempts = this.config.requestMaxRetries + 1;
     let lastError: unknown;
     let authRecoveryAttempted = false;
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    for (let i = 1; i <= maxAttempts; i += 1) {
       try {
-        return await this.requestOnce<T>(path, method, body, query, options);
+        return await attempt();
       } catch (error) {
         let currentError: unknown = error;
 
@@ -138,7 +137,7 @@ export class FeishuClient {
           );
           Logger.warn(`Feishu auth token expired, refreshing and retrying once: ${path}`);
           try {
-            return await this.requestOnce<T>(path, method, body, query, options);
+            return await attempt();
           } catch (retryError) {
             currentError = retryError;
           }
@@ -146,61 +145,12 @@ export class FeishuClient {
 
         lastError = currentError;
         const retryable = this.isRetryableError(currentError);
-        const shouldRetry = retryable && attempt < maxAttempts;
+        const shouldRetry = retryable && i < maxAttempts;
         if (!shouldRetry) break;
 
-        const backoffMs = this.computeBackoffMs(attempt, currentError);
+        const backoffMs = this.computeBackoffMs(i, currentError);
         Logger.warn(
-          `Feishu request retry ${attempt}/${maxAttempts - 1} in ${backoffMs}ms: ${path}`,
-        );
-        await new Promise((resolve) => setTimeout(resolve, backoffMs));
-      }
-    }
-
-    throw lastError instanceof Error
-      ? lastError
-      : new Error(`Unknown request failure for ${path}`);
-  }
-
-  private async requestBinaryWithRetry(
-    path: string,
-    method: RequestMethod,
-    body?: unknown,
-    query?: Record<string, string | number | boolean | undefined>,
-    options?: RequestOptions,
-  ): Promise<FeishuBinaryResponse> {
-    const maxAttempts = this.config.requestMaxRetries + 1;
-    let lastError: unknown;
-    let authRecoveryAttempted = false;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        return await this.requestBinaryOnce(path, method, body, query, options);
-      } catch (error) {
-        let currentError: unknown = error;
-
-        if (this.isAuthExpiredError(currentError) && !authRecoveryAttempted) {
-          authRecoveryAttempted = true;
-          this.authManager.invalidateCachedAccessToken(
-            `auth expired response for ${path}`,
-            options?.authTypeOverride,
-          );
-          Logger.warn(`Feishu auth token expired, refreshing and retrying once: ${path}`);
-          try {
-            return await this.requestBinaryOnce(path, method, body, query, options);
-          } catch (retryError) {
-            currentError = retryError;
-          }
-        }
-
-        lastError = currentError;
-        const retryable = this.isRetryableError(currentError);
-        const shouldRetry = retryable && attempt < maxAttempts;
-        if (!shouldRetry) break;
-
-        const backoffMs = this.computeBackoffMs(attempt, currentError);
-        Logger.warn(
-          `Feishu request retry ${attempt}/${maxAttempts - 1} in ${backoffMs}ms: ${path}`,
+          `Feishu request retry ${i}/${maxAttempts - 1} in ${backoffMs}ms: ${path}`,
         );
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
       }
@@ -272,7 +222,7 @@ export class FeishuClient {
     }
 
     if (json && "data" in json) {
-      return (json.data ?? (json as unknown as T)) as T;
+      return (json.data ?? (json as unknown as T));
     }
     return (json as unknown as T) ?? ({} as T);
   }
@@ -351,17 +301,8 @@ export class FeishuClient {
     }
     // Network/transport level error from fetch.
     if (!(error instanceof Error)) return false;
-    const transientKeywords = [
-      "fetch failed",
-      "network",
-      "timeout",
-      "socket hang up",
-      "econnreset",
-      "etimedout",
-      "eai_again",
-    ];
     const lower = error.message.toLowerCase();
-    return transientKeywords.some((k) => lower.includes(k));
+    return TRANSIENT_ERROR_KEYWORDS.some((k) => lower.includes(k));
   }
 
   private isAuthExpiredError(error: unknown): boolean {
