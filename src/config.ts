@@ -131,6 +131,8 @@ const EnvSchema = z.object({
     .int()
     .positive()
     .default(60),
+  KNOWLEDGE_INDEX_PATH: z.string().optional(),
+  KNOWLEDGE_DEFAULT_SPACE_IDS: z.string().optional(),
 });
 
 const NormalizedConfigSchema = EnvSchema.superRefine((env, ctx) => {
@@ -192,6 +194,10 @@ export interface AppConfig {
     cacheMaxEntries: number;
     cacheCleanupIntervalSeconds: number;
   };
+  knowledge: {
+    indexPath?: string;
+    defaultSpaceIds: string[];
+  };
 }
 
 export function getConfig(): AppConfig {
@@ -240,6 +246,13 @@ export function getConfig(): AppConfig {
       wikiTreeMaxConcurrency: env.FEISHU_WIKI_TREE_MAX_CONCURRENCY,
       cacheMaxEntries: env.FEISHU_CACHE_MAX_ENTRIES,
       cacheCleanupIntervalSeconds: env.FEISHU_CACHE_CLEANUP_INTERVAL_SECONDS,
+    },
+    knowledge: {
+      indexPath: resolveOptionalPathLikeValue(env.KNOWLEDGE_INDEX_PATH),
+      defaultSpaceIds: (env.KNOWLEDGE_DEFAULT_SPACE_IDS ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
     },
   };
 }

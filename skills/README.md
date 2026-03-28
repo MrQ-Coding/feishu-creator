@@ -68,6 +68,19 @@
 - [`feishu-style-extract/references/style-profile-template.md`](./feishu-style-extract/references/style-profile-template.md)
 - [`feishu-style-extract/agents/openai.yaml`](./feishu-style-extract/agents/openai.yaml)
 
+### `knowledge-qa`
+
+适用场景：
+
+- 遇到技术问题时，先搜索知识库中是否已有解决方案
+- 问题解决后，将解决方案记录到知识库
+- 首次使用时构建本地知识索引
+- 知识库「查 → 解 → 记」闭环工作流
+
+目录：
+
+- [`knowledge-qa/SKILL.md`](./knowledge-qa/SKILL.md)
+
 ## Skill 之间的协作关系
 
 ```
@@ -75,6 +88,7 @@ feishu-setup          → 安装配置完成后，交给 doc-workflow
 feishu-doc-workflow   → 文档操作（CRUD），需要写内容时调用 doc-writer
 feishu-doc-writer     → 写作内容，需要风格时调用 style-extract
 feishu-style-extract  → 风格提取，结果保存后供 doc-writer 复用
+knowledge-qa          → 知识库问答闭环，查 → 解 → 记，依赖 doc-workflow 写入
 ```
 
 ## 使用方式

@@ -12,3 +12,6 @@ Feishu-MCP/
 
 # Temporary files
 tmp/
+
+# Knowledge index (auto-generated on startup)
+.knowledge/

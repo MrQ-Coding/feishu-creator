@@ -15,6 +15,7 @@
 - 用 Graphviz 或 PlantUML 渲染图并直接插入飞书文档
 - 把 Markdown 导入成飞书原生块，或把文档导出成 Markdown
 - 列出知识库空间和目录树，创建 Wiki 文档，删除不再需要的节点
+- 知识库问答闭环：先查本地索引 → 没找到就解决 → 解决后回写知识库
 
 如果你希望 AI 在真正修改前先“看一眼会改哪里”，可以先调用 `preview_edit_plan`。
 
@@ -132,6 +133,14 @@ Claude Desktop、Cursor、Codex 等支持 `stdio` 的客户端都可以按这个
 - `update_table_cell`
 - `replace_table`
 
+### 知识库问答
+
+- `knowledge_search` — 先查本地索引（毫秒级），可选 fallback 飞书搜索 API
+- `knowledge_record` — 将问题和解决方案写入知识库，同步更新本地索引
+- `knowledge_index_rebuild` — 从飞书 Wiki 空间重建本地索引
+
+本地索引默认存储在项目根目录 `.knowledge/index.json`（v2 层级格式：spaces → documents → sections，消除重复字段），查询时先匹配索引（关键词 + 标题），命中后才拉取飞书文档内容，避免每次都调 API。可通过 `KNOWLEDGE_INDEX_PATH` 自定义路径。
+
 ### Wiki 与运维
 
 - `list_feishu_wiki_spaces`
@@ -180,6 +189,20 @@ create_graphviz_diagram_block(
 ```text
 preview_edit_plan（operation: copy_section, documentId: 源文档ID, sectionHeading: "背景"）
 copy_section（documentId: 源文档ID, sectionHeading: "背景", targetDocumentId: 目标文档ID）
+```
+
+### 知识库问答闭环
+
+```text
+# 首次使用：构建本地索引
+knowledge_index_rebuild（spaceId: "xxx"）
+
+# 遇到问题时先搜索
+knowledge_search（query: "Nginx 502"）
+
+# 解决后记录到知识库
+knowledge_record（spaceId: "xxx", category: "运维问题", title: "Nginx 502 Bad Gateway",
+  keywords: ["nginx", "502", "upstream"], problem: "...", solution: "..."）
 ```
 
 ---
@@ -280,6 +303,8 @@ HTTP 模式提供：
 | `FEISHU_JAVA_PATH` | `java` 路径 |
 | `FEISHU_PLAYWRIGHT_HEADLESS` | Wiki 删除是否无头执行 |
 | `FEISHU_PLAYWRIGHT_USER_DATA_DIR` | 浏览器 profile 路径 |
+| `KNOWLEDGE_INDEX_PATH` | 本地知识索引文件路径（默认 `.knowledge/index.json`，相对路径以项目根目录为基准） |
+| `KNOWLEDGE_DEFAULT_SPACE_IDS` | 启动时自动索引的 Wiki 空间 ID（逗号分隔多个） |
 
 ---
 

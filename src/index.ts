@@ -59,6 +59,28 @@ async function main(): Promise<void> {
     }
   }
 
+  // Rebuild knowledge index on startup for all configured spaces.
+  const knowledgeSpaceIds = config.knowledge.defaultSpaceIds;
+  if (knowledgeSpaceIds.length > 0) {
+    Promise.all(
+      knowledgeSpaceIds.map((spaceId) =>
+        context.knowledgeService
+          .rebuildIndex({ spaceId })
+          .then((result) => {
+            Logger.info(
+              `Knowledge index rebuilt: ${result.totalEntries} entries from ${result.totalDocuments} docs (space=${spaceId})`,
+            );
+            return result;
+          })
+          .catch((error) => {
+            const message = error instanceof Error ? error.message : String(error);
+            Logger.warn(`Knowledge index rebuild failed for space=${spaceId}: ${message}`);
+            return null;
+          }),
+      ),
+    ).catch(() => {});
+  }
+
   if (mode === "stdio") {
     await runStdio(context);
     return;
