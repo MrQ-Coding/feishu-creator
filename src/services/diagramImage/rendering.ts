@@ -194,14 +194,7 @@ export async function runRendererCommand(
     const child = spawn(command.command, command.args, {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
-      env: {
-        ...process.env,
-        // Ensure Graphviz can find system CJK fonts (e.g. Microsoft YaHei)
-        // even when running from a portable vendor/ install.
-        ...(process.platform === "win32" && {
-          GDFONTPATH: process.env.GDFONTPATH ?? "C:\\Windows\\Fonts",
-        }),
-      },
+      env: { ...process.env, ...getRendererFontEnv() },
     });
 
     child.once("error", (error) => {
@@ -269,4 +262,50 @@ async function assertExecutable(
   } catch {
     throw new Error(`Configured ${envName} is not executable: ${executablePath}`);
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Cross-platform font environment for Graphviz / PlantUML           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Build extra env vars so renderers can find system CJK fonts.
+ *
+ * - GDFONTPATH: used by Graphviz's GD library to locate .ttf/.otf files.
+ * - FONTCONFIG_PATH: used by fontconfig (Graphviz on Linux/macOS).
+ *
+ * Only sets a value when the env var is not already present, so user
+ * overrides via .env are always respected.
+ */
+let _cachedFontEnv: Record<string, string> | undefined;
+
+function getRendererFontEnv(): Record<string, string> {
+  if (_cachedFontEnv) return _cachedFontEnv;
+
+  const env: Record<string, string> = {};
+  const platform = process.platform;
+
+  // GDFONTPATH — semicolon-separated on Windows, colon on Unix
+  if (!process.env.GDFONTPATH) {
+    if (platform === "win32") {
+      env.GDFONTPATH = "C:\\Windows\\Fonts";
+    } else if (platform === "darwin") {
+      env.GDFONTPATH = [
+        "/System/Library/Fonts",
+        "/Library/Fonts",
+        path.join(os.homedir(), "Library/Fonts"),
+      ].join(":");
+    } else {
+      // Linux and others
+      env.GDFONTPATH = [
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+        path.join(os.homedir(), ".local/share/fonts"),
+        path.join(os.homedir(), ".fonts"),
+      ].join(":");
+    }
+  }
+
+  _cachedFontEnv = env;
+  return env;
 }
