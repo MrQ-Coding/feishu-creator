@@ -43,7 +43,7 @@ export class DiagramImageService {
     await runRendererCommand(
       {
         command,
-        args: [`-K${layoutEngine}`, `-T${normalized.format}`],
+        args: [`-K${layoutEngine}`, `-T${normalized.format}`, `-Gdpi=200`],
         label: "Graphviz",
       },
       normalized.sourceText,
@@ -69,6 +69,7 @@ export class DiagramImageService {
           ...command.args,
           normalized.format === "svg" ? "-tsvg" : "-tpng",
           "-pipe",
+          "-Sdpi=200",
         ],
         label: "PlantUML",
       },
