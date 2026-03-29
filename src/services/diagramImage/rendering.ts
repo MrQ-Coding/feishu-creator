@@ -79,6 +79,9 @@ function findJavaBinary(): string | null {
 /** Local plantuml.jar path inside project vendor directory. */
 const PLANTUML_JAR_PATH = path.join(projectRoot, "vendor", "plantuml.jar");
 
+/** Suppress Java GUI/console window on Windows. */
+const JAVA_HEADLESS_FLAG = "-Djava.awt.headless=true";
+
 /* ------------------------------------------------------------------ */
 /*  Public API                                                        */
 /* ------------------------------------------------------------------ */
@@ -144,7 +147,7 @@ export async function resolvePlantUmlCommand(
     }
     return {
       command: javaCommand,
-      args: ["-jar", configuredJar],
+      args: [JAVA_HEADLESS_FLAG, "-jar", configuredJar],
       label: `${javaCommand} -jar ${configuredJar}`,
     };
   }
@@ -160,7 +163,7 @@ export async function resolvePlantUmlCommand(
     if (javaCmd) {
       return {
         command: javaCmd,
-        args: ["-jar", PLANTUML_JAR_PATH],
+        args: [JAVA_HEADLESS_FLAG, "-jar", PLANTUML_JAR_PATH],
         label: `java -jar ${PLANTUML_JAR_PATH}`,
       };
     }
