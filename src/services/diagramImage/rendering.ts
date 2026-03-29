@@ -194,6 +194,14 @@ export async function runRendererCommand(
     const child = spawn(command.command, command.args, {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      env: {
+        ...process.env,
+        // Ensure Graphviz can find system CJK fonts (e.g. Microsoft YaHei)
+        // even when running from a portable vendor/ install.
+        ...(process.platform === "win32" && {
+          GDFONTPATH: process.env.GDFONTPATH ?? "C:\\Windows\\Fonts",
+        }),
+      },
     });
 
     child.once("error", (error) => {
