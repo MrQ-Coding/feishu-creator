@@ -22,15 +22,15 @@
 
 - 简要描述当前架构或工作流。
 - 突出本方案要解决的痛点。
-- 架构较复杂时配一张架构图（`create_graphviz_diagram_block`）。
+- 架构较复杂时配架构图（Graphviz，`rankdir=LR`，subgraph 分组各层）。
 
 ### 方案设计
 
 - 第一句话给出核心思路。
 - 按组件或层次拆分子章节。
 - 每个组件说明：做什么 → 怎么做 → 为什么这样做。
-- 按组件拆分时配架构图（`create_graphviz_diagram_block`），展示组件间依赖和数据流。
-- 涉及多服务/多模块交互时配时序图（`create_plantuml_diagram_block`），展示调用顺序。
+- 按组件拆分时配架构图（Graphviz，`rankdir=LR`，subgraph cluster 分组），展示组件间依赖和数据流。
+- 涉及多服务/多模块的请求-响应交互时配时序图（PlantUML，`A -> B: msg` 语法），展示调用顺序。
 
 ### 方案对比
 

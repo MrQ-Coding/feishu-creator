@@ -53,17 +53,32 @@ description: Write, rewrite, polish, and restructure Feishu documents and wiki n
 4. **格式克制。** 行内代码仅用于标识符和路径，不用于普通中文词汇；加粗和高亮从严使用。
 5. **过渡显式。** 当下一节依赖当前节时，用一句话衔接。
 6. **避免元叙述。** 不写"本节将介绍..."，直接说明。
-7. **图表配套。** 撰写过程中逐章节判断是否需要配图。满足以下任一条件即配图：
-   - 描述了组件/模块间的调用关系或依赖关系 → 架构图（`create_graphviz_diagram_block`）
-   - 描述了时序交互（A 调用 B，B 回调 A）→ 时序图（`create_plantuml_diagram_block`）
-   - 描述了状态变化流转 → 状态机图（Graphviz 或 PlantUML）
-   - 描述了分支决策逻辑（如果…则…否则…）→ 流程图（`create_graphviz_diagram_block`）
-   - 列出了 3 个以上组件的层级或包含关系 → 架构图（`create_graphviz_diagram_block`）
-   - 描述了数据流转路径（A→B→C）→ 数据流图（`create_graphviz_diagram_block`）
+7. **图表配套。** 撰写过程中逐章节判断是否需要配图。
 
-   不需要画图的情况：纯配置说明或操作步骤列表；用表格已足够清晰；章节涉及的节点/步骤不足 3 个。
+   **触发条件**（满足任一即配图）：
 
-   工具选择：层级、依赖、流程、架构类 → Graphviz；时序、交互、活动类 → PlantUML。图表紧跟在对应正文段落之后插入。
+   | 正文特征 | 图表类型 | 工具 |
+   |---------|---------|------|
+   | 组件/模块间的调用或依赖关系 | 架构图 | `create_graphviz_diagram_block` |
+   | 多步骤流程或阶段流转（≥3 步） | 流程图 | `create_graphviz_diagram_block` |
+   | 分支决策逻辑（如果…则…否则…） | 流程图 | `create_graphviz_diagram_block` |
+   | 数据流转路径（A→B→C） | 数据流图 | `create_graphviz_diagram_block` |
+   | 时序交互（A 调用 B，B 回调 A） | 时序图 | `create_plantuml_diagram_block` |
+   | 状态变化流转 | 状态机图 | `create_graphviz_diagram_block` |
+
+   **不画图**：纯配置/操作步骤列表；用表格已足够清晰；节点/步骤不足 3 个。
+
+   **渲染规范**（必须遵守，否则图表会模糊、乱码或过大）：
+
+   - **优先用 Graphviz**，仅时序图用 PlantUML。Graphviz 排版更紧凑、中文兼容性更好。
+   - **布局方向**：默认 `rankdir=LR`（横向）。仅当节点数 ≤ 5 且是纯线性链时才用 `rankdir=TB`（纵向）。
+   - **中文字体**：Graphviz 节点和边必须加 `fontname="Microsoft YaHei"`；PlantUML 必须加 `skinparam defaultFontName Microsoft YaHei`。不指定字体会导致中文乱码。
+   - **字号**：节点 `fontsize=11` 或 `12`，边 `fontsize=9` 或 `10`。
+   - **避免 PlantUML 活动图**：PlantUML 的 activity diagram 纵向占用极大，改用 Graphviz 流程图。PlantUML 仅用于时序图（`A -> B: message`）。
+   - **PlantUML 禁止 swimlane**：`|xxx|` 语法在无中文字体环境下会乱码，用 Graphviz subgraph cluster 替代。
+   - **分组用 subgraph cluster**：将相关节点放入 `subgraph cluster_xxx { label="分组名"; style=dashed; }` 中，视觉清晰。
+   - **节点样式**：`style="rounded,filled"` + 浅色 `fillcolor`（如 `#E3F2FD`、`#FFF3E0`、`#E8F5E9`），避免纯白。
+   - **图表紧跟正文**：插入到对应正文段落之后，不要集中放在文档末尾。
 
 ### 6. 一致性自检
 

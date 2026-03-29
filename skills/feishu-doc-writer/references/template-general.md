@@ -56,11 +56,13 @@ A: 直接回答，必要时附操作步骤。
 
 ## 3. 图表指引
 
-| 章节 | 触发条件 | 推荐图表 |
-|------|----------|----------|
-| 操作步骤 | 步骤涉及多个系统或服务交互 | 流程图（`create_graphviz_diagram_block`） |
-| 核心要点 / 概述 | 涉及系统架构或组件关系 | 架构图（`create_graphviz_diagram_block`） |
-| 详细说明 | 描述数据流转路径（3 步以上） | 数据流图（`create_graphviz_diagram_block`） |
+渲染规范见 SKILL.md 第 5.7 条。
+
+| 章节 | 触发条件 | 图表类型 | 工具 |
+|------|----------|----------|------|
+| 操作步骤 | 步骤涉及多个系统或服务交互 | 流程图（Graphviz，`rankdir=LR`） | `create_graphviz_diagram_block` |
+| 核心要点 / 概述 | 涉及系统架构或组件关系 | 架构图（Graphviz，subgraph 分组） | `create_graphviz_diagram_block` |
+| 详细说明 | 描述数据流转路径（3 步以上） | 数据流图（Graphviz，`rankdir=LR`） | `create_graphviz_diagram_block` |
 
 ## 4. 注意事项
 
