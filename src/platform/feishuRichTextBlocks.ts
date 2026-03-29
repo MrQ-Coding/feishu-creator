@@ -278,14 +278,27 @@ function parseInlineFormatting(
       pushTextElement(elements, text.slice(lastIndex, match.index));
     }
 
-    if (match[1] !== undefined) {
-      elements.push(buildStyledTextElement(match[1], { bold: true, italic: true }));
-    } else if (match[2] !== undefined) {
-      elements.push(buildStyledTextElement(match[2], { bold: true }));
-    } else if (match[3] !== undefined) {
-      elements.push(buildStyledTextElement(match[3], { italic: true }));
-    } else if (match[4] !== undefined) {
-      elements.push(buildStyledTextElement(match[4], { strikethrough: true }));
+    const raw = match[1] ?? match[2] ?? match[3] ?? match[4] ?? "";
+    const style: InlineStyle = match[1] !== undefined
+      ? { bold: true, italic: true }
+      : match[2] !== undefined
+        ? { bold: true }
+        : match[3] !== undefined
+          ? { italic: true }
+          : { strikethrough: true };
+
+    // Feishu API ignores styles on text with leading/trailing whitespace.
+    // Move surrounding spaces outside the styled element.
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      // Entirely whitespace — push as plain text
+      pushTextElement(elements, raw);
+    } else {
+      const leadingSpaces = raw.slice(0, raw.indexOf(trimmed[0]));
+      const trailingSpaces = raw.slice(raw.lastIndexOf(trimmed[trimmed.length - 1]) + 1);
+      if (leadingSpaces) pushTextElement(elements, leadingSpaces);
+      elements.push(buildStyledTextElement(trimmed, style));
+      if (trailingSpaces) pushTextElement(elements, trailingSpaces);
     }
 
     lastIndex = match.index + match[0].length;
