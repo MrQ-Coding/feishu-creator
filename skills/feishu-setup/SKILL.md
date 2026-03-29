@@ -12,7 +12,6 @@ description: Install, build, configure, and health-check feishu-creator. Use whe
 ### 1. 前置检查
 
 - 确认 `node >= 20.17.0` 和 `npm` 可用。
-- 需要图表渲染时检查 `dot`（Graphviz）和 `plantuml`。
 - 仓库不存在时通过 `git` 克隆或引导用户获取。
 
 ### 2. 安装与构建
@@ -70,6 +69,59 @@ MCP_MODE=auto
 
 注意标注是否检测到代理环境变量（`HTTP_PROXY`、`HTTPS_PROXY`）。
 
+### 6. 图表工具安装（按需）
+
+当用户首次使用画图功能遇到 `not available` 错误，或主动要求安装时执行。
+
+所有图表工具默认安装到项目 `vendor/` 目录下（便携式，不污染系统环境）。feishu-creator 会自动检测 `vendor/` 下的工具，无需配置环境变量。
+
+#### Graphviz（`dot` 命令）
+
+**推荐：便携安装到 vendor/**
+
+Windows：
+```bash
+# 下载并解压 Graphviz 便携版到 vendor/graphviz/
+curl -fSL -o vendor/graphviz.zip https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/12.2.1/windows_10_cmake_Release_graphviz-install-12.2.1-win64.exe.sha256
+# 或者直接用 winget 安装然后复制
+mkdir -p vendor/graphviz/bin
+cp "/c/Program Files/Graphviz/bin/"* vendor/graphviz/bin/
+```
+
+macOS / Linux（系统安装也可以）：
+
+| 平台 | 安装命令 |
+|------|----------|
+| macOS | `brew install graphviz` |
+| Ubuntu/Debian | `sudo apt-get install -y graphviz` |
+| RHEL/CentOS | `sudo yum install -y graphviz` |
+| Arch | `sudo pacman -S --noconfirm graphviz` |
+
+feishu-creator 查找 `dot` 的优先级：`vendor/graphviz/bin/dot` → PATH → 系统已知路径。
+
+#### PlantUML
+
+**推荐：下载 jar 到 vendor/**
+
+1. 确保 Java 可用（如果没有）：
+   - Windows: `winget install --id EclipseAdoptium.Temurin.21.JRE --accept-source-agreements --accept-package-agreements`
+   - macOS: `brew install --cask temurin`
+   - Linux: `sudo apt-get install -y default-jre-headless`
+
+2. 下载 plantuml.jar：
+   ```bash
+   mkdir -p vendor
+   curl -fSL -o vendor/plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar
+   ```
+
+feishu-creator 会自动检测 `vendor/plantuml.jar` 并使用 `java -jar` 方式调用，无需额外配置。
+
+macOS / Linux 也可以用包管理器直装：`brew install plantuml`、`sudo apt-get install -y plantuml` 等。
+
+#### 安装验证
+
+安装后调用 `render_graphviz_diagram` 和 `render_plantuml_diagram` 验证。HTTP 模式下需先重启服务：`pm2 restart feishu-mcp --update-env`。
+
 ## HTTP 多用户部署
 
 当用户需要将 feishu-creator 部署为共享 HTTP 服务时，参考 [references/http-multi-user-recipes.md](references/http-multi-user-recipes.md)。
@@ -101,7 +153,7 @@ MCP_MODE=auto
 
 - 报告文件时始终使用绝对路径。
 - 默认 `MCP_MODE=auto` + `--stdio`，除非用户明确要求 HTTP。
-- 仅在用户请求图表功能时将 Graphviz/PlantUML 纳入健康检查。
+- 图表工具缺失时引导用户通过步骤 6 安装，不要在 MCP 服务内部自动安装。
 - 不要直接输出原始 MCP 工具返回——附上一句解释说明。
 - 共享 HTTP 模式下，明确说明 `MCP_HTTP_AUTH_TOKEN` 是传输层访问控制，不是用户身份。
 - 不要要求终端用户在 MCP 配置中填写原始账号密码。
