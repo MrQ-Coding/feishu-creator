@@ -53,6 +53,17 @@ description: Write, rewrite, polish, and restructure Feishu documents and wiki n
 4. **格式克制。** 行内代码仅用于标识符和路径，不用于普通中文词汇；加粗和高亮从严使用。
 5. **过渡显式。** 当下一节依赖当前节时，用一句话衔接。
 6. **避免元叙述。** 不写"本节将介绍..."，直接说明。
+7. **图表配套。** 撰写过程中逐章节判断是否需要配图。满足以下任一条件即配图：
+   - 描述了组件/模块间的调用关系或依赖关系 → 架构图（`create_graphviz_diagram_block`）
+   - 描述了时序交互（A 调用 B，B 回调 A）→ 时序图（`create_plantuml_diagram_block`）
+   - 描述了状态变化流转 → 状态机图（Graphviz 或 PlantUML）
+   - 描述了分支决策逻辑（如果…则…否则…）→ 流程图（`create_graphviz_diagram_block`）
+   - 列出了 3 个以上组件的层级或包含关系 → 架构图（`create_graphviz_diagram_block`）
+   - 描述了数据流转路径（A→B→C）→ 数据流图（`create_graphviz_diagram_block`）
+
+   不需要画图的情况：纯配置说明或操作步骤列表；用表格已足够清晰；章节涉及的节点/步骤不足 3 个。
+
+   工具选择：层级、依赖、流程、架构类 → Graphviz；时序、交互、活动类 → PlantUML。图表紧跟在对应正文段落之后插入。
 
 ### 6. 一致性自检
 
@@ -87,6 +98,7 @@ description: Write, rewrite, polish, and restructure Feishu documents and wiki n
 | 6 | 无元叙述 | 不存在"本节将..."、"下面介绍..."等元叙述句式 |
 | 7 | 总结收尾 | 超过 4 个章节的文档有总结章节 |
 | 8 | 风格匹配 | 若启用了风格画像，输出符合其 `风格指纹` 规则 |
+| 9 | 图表配套 | 符合图表触发条件的章节已配图，图表紧跟对应正文 |
 
 ## 参考模板
 
