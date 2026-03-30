@@ -93,10 +93,42 @@ knowledge-qa          → 知识库问答闭环，查 → 解 → 记，依赖 d
 
 ## 使用方式
 
-先把仓库里的 skill 同步到本机 Codex skill 目录：
+### Claude Code（推荐：Plugin 安装）
+
+feishu-creator 是一个 Claude Code plugin，包含 5 个 skills + MCP server。一条命令完成安装：
 
 ```bash
+node scripts/installPlugin.mjs
+```
+
+脚本会自动：
+1. 检查前置依赖（Node.js、git、Claude CLI）
+2. 执行 `npm install` 和 `npm run build`（可用 `--skip-build` 跳过）
+3. 初始化 `.env`，检查飞书凭据配置
+4. 交互式选择 MCP 传输模式（stdio 或 http）；WSL 默认 http
+5. 在 `~/.claude/feishu-creator-marketplace/` 创建 marketplace 并安装 plugin
+6. 同步 skills 到 Codex（可用 `--claude-only` 跳过）
+7. 运行 MCP 冒烟测试验证
+
+可用参数：`--force`（覆盖安装），`--transport=stdio|http`（跳过交互），`--skip-build`，`--claude-only`，`--codex-only`。
+
+安装后重启 Claude Code 即可加载 skills 和 MCP。
+
+> **WSL 注意**：WSL 下 MCP 走 HTTP 模式，需确保 Windows 侧已通过 pm2 启动 HTTP 服务：
+> `pm2 start dist/index.js --name feishu-mcp -- --http`
+
+### Codex（Skill 同步）
+
+Codex 不支持 Claude Code plugin 格式，使用独立的 skill 同步脚本：
+
+```bash
+# macOS / Linux
 npm run skills:sync
+
+# Windows（不支持 symlink，用 copy 模式）
+npm run skills:sync -- --mode copy --force
 ```
 
 同步后重启 Codex 或打开新会话。宿主会先扫描每个 `SKILL.md` 的元数据，再在命中时按需读取正文和 references。
+
+Codex 的 MCP 需要单独配置，在 `~/.codex/` 对应配置文件中添加 feishu-creator MCP server。

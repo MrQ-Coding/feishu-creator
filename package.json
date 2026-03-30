@@ -17,6 +17,7 @@
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest",
+    "plugin:install": "node scripts/installPlugin.mjs",
     "skills:sync": "node scripts/syncSkills.mjs",
     "call:tool": "node scripts/callTool.mjs",
     "profile:bootstrap": "tsx scripts/bootstrapPlaywrightProfile.ts",

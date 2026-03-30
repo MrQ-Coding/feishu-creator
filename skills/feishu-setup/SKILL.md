@@ -19,7 +19,72 @@ description: Install, build, configure, and health-check feishu-creator. Use whe
 1. `npm install`
 2. 若 `.env` 不存在，从 `.env.example` 复制一份。
 3. `npm run build`
-4. 准备 MCP 客户端入口：`node /absolute/path/to/dist/index.js --stdio`
+
+### 2.5 客户端接入
+
+根据宿主类型选择接入方式：
+
+#### Claude Code — Plugin 安装（推荐）
+
+```bash
+node scripts/installPlugin.mjs
+```
+
+一条命令完成 marketplace 创建 → 注册 → plugin 安装。plugin 包含 5 个 skills 和 MCP server。
+
+安装时交互式选择 MCP 传输模式：
+
+- **stdio**：直接进程通信，无需额外服务管理。适合单机开发。
+- **http**：HTTP 服务（`localhost:3333`），可通过 pm2 持久运行，多客户端共享。
+
+也可通过参数跳过交互：
+
+```bash
+node scripts/installPlugin.mjs --transport=stdio   # 指定 stdio
+node scripts/installPlugin.mjs --transport=http    # 指定 http
+node scripts/installPlugin.mjs --force             # 覆盖现有安装
+node scripts/installPlugin.mjs --skip-build        # 跳过 npm install & build
+node scripts/installPlugin.mjs --claude-only       # 仅安装 Claude Code plugin
+node scripts/installPlugin.mjs --codex-only        # 仅同步 Codex skills
+```
+
+- **WSL**：自动选择 HTTP 模式，连接 Windows 侧 `localhost:3333`。需先确保 HTTP 服务已启动：
+  ```bash
+  pm2 start dist/index.js --name feishu-mcp -- --http
+  ```
+- 选择 HTTP 模式时，脚本会自动通过 pm2 启动服务（如未运行）。
+
+安装后需重启 Claude Code。
+
+#### Codex — Skill 同步
+
+Codex 不支持 Claude Code plugin 格式，使用 skill 同步脚本：
+
+```bash
+# macOS / Linux
+npm run skills:sync
+
+# Windows（需 copy 模式）
+npm run skills:sync -- --mode copy --force
+```
+
+MCP server 需在 Codex 配置文件中单独添加。
+
+#### 其他客户端（Cursor、VS Code 等）— 手动 MCP 配置
+
+在客户端对应的 MCP 配置中添加：
+
+```json
+{
+  "feishu-creator": {
+    "command": "node",
+    "args": ["/absolute/path/to/dist/index.js", "--stdio"],
+    "cwd": "/absolute/path/to/feishu-creator"
+  }
+}
+```
+
+这些客户端只加载 MCP 能力，不加载 skills。
 
 ### 3. 配置凭据
 
@@ -81,11 +146,14 @@ MCP_MODE=auto
 
 Windows：
 ```bash
-# 下载并解压 Graphviz 便携版到 vendor/graphviz/
-curl -fSL -o vendor/graphviz.zip https://gitlab.com/api/v4/projects/4207231/packages/generic/graphviz-releases/12.2.1/windows_10_cmake_Release_graphviz-install-12.2.1-win64.exe.sha256
-# 或者直接用 winget 安装然后复制
+# 方法 1：winget 安装后复制到 vendor/（推荐）
+winget install --id Graphviz.Graphviz --accept-source-agreements
 mkdir -p vendor/graphviz/bin
 cp "/c/Program Files/Graphviz/bin/"* vendor/graphviz/bin/
+
+# 方法 2：手动下载
+# 从 https://graphviz.org/download/ 下载 Windows 安装包，
+# 安装后将 bin/ 目录复制到 vendor/graphviz/bin/
 ```
 
 macOS / Linux（系统安装也可以）：
