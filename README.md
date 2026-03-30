@@ -21,33 +21,12 @@
 
 ---
 
-## 5 分钟上手
+## 上手
 
-### 1. 创建飞书应用
+1. 登录 [飞书开放平台](https://open.feishu.cn/app?lang=zh-CN)，创建自建应用，添加 `docs:doc`、`wiki:wiki`、`drive:drive:readonly` 等权限，记录 App ID 和 App Secret。
+2. 在 Claude Code 中说：**"帮我安装 feishu-creator，仓库地址 https://github.com/MrQ-Coding/feishu-creator"**
 
-登录 [飞书开放平台](https://open.feishu.cn/app?lang=zh-CN)，创建自建应用并添加常用权限：
-
-```text
-docs:doc
-docs:doc:readonly
-wiki:wiki
-wiki:wiki:readonly
-drive:drive:readonly
-```
-
-如果需要上传图片，再补 `drive:file`。记录下 `App ID` 和 `App Secret`。
-
-### 2. 安装
-
-```bash
-git clone https://github.com/MrQ-Coding/feishu-creator.git
-cd feishu-creator
-node scripts/installPlugin.mjs
-```
-
-脚本自动完成依赖安装、构建、环境配置、客户端接入和连通性验证。按提示填入 App ID 和 App Secret，重启 Claude Code 即可。
-
-安装完成后，内置的 `feishu-setup` skill 会在需要时自动引导配置和故障排查。
+内置的 `feishu-setup` skill 会自动完成克隆、构建、凭据配置、客户端接入和连通性验证。
 
 ---
 
