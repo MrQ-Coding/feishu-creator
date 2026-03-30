@@ -37,7 +37,7 @@ drive:drive:readonly
 
 如果需要上传图片，再补 `drive:file`。记录下 `App ID` 和 `App Secret`。
 
-### 2. 安装并接入
+### 2. 安装
 
 ```bash
 git clone https://github.com/MrQ-Coding/feishu-creator.git
@@ -45,39 +45,9 @@ cd feishu-creator
 node scripts/installPlugin.mjs
 ```
 
-安装脚本会自动完成：
+脚本自动完成依赖安装、构建、环境配置、客户端接入和连通性验证。按提示填入 App ID 和 App Secret，重启 Claude Code 即可。
 
-1. `npm install` + `npm run build`
-2. 从 `.env.example` 创建 `.env`（已有则跳过）
-3. 交互式选择 MCP 传输模式（stdio / http）
-4. 注册 Claude Code plugin（含 5 个 skills + MCP server）
-5. 同步 Codex skills
-6. 冒烟测试验证 MCP 连通性
-
-安装完成后，编辑 `.env` 填入飞书凭据：
-
-```dotenv
-FEISHU_APP_ID=cli_你的AppID
-FEISHU_APP_SECRET=你的AppSecret
-```
-
-重启 Claude Code 即可使用。
-
-> **WSL 用户**：脚本自动选择 HTTP 模式连接 Windows 侧服务，需先在 Windows 上启动 `pm2 start dist/index.js --name feishu-mcp -- --http`。
->
-> **代理环境**：如需代理访问飞书，在客户端里透传 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY`，并设置 `NODE_USE_ENV_PROXY=1`。
-
-### 3. 验证
-
-在 AI 对话中依次执行：
-
-```text
-1. ping
-2. auth_status（fetchToken: true）
-3. get_document_info（已知文档 ID）
-```
-
-如果 `ping` 通但 `get_document_info` 失败，通常是飞书权限或文档分享设置的问题。
+安装完成后，内置的 `feishu-setup` skill 会在需要时自动引导配置和故障排查。
 
 ---
 
