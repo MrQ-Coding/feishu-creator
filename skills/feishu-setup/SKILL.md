@@ -134,59 +134,21 @@ MCP_MODE=auto
 
 注意标注是否检测到代理环境变量（`HTTP_PROXY`、`HTTPS_PROXY`）。
 
-### 6. 图表工具安装（按需）
+### 6. 图表工具（Graphviz & PlantUML）
 
-当用户首次使用画图功能遇到 `not available` 错误，或主动要求安装时执行。
+`installPlugin.mjs` 会自动检测并安装图表工具。安装逻辑：
 
-所有图表工具默认安装到项目 `vendor/` 目录下（便携式，不污染系统环境）。feishu-creator 会自动检测 `vendor/` 下的工具，无需配置环境变量。
+- **Graphviz**：检测 `vendor/graphviz/bin/dot` → PATH → 系统已知路径。未找到时按平台自动安装（winget / brew / apt）。
+- **PlantUML**：检测 PATH 中的 `plantuml` → `vendor/plantuml.jar`。未找到时自动下载 jar 到 `vendor/`。
+- **Java**：仅检测和提示，不自动安装。PlantUML 需要 Java，Graphviz 不需要。
 
-#### Graphviz（`dot` 命令）
+如果自动安装失败（如无网络或缺少包管理器），可手动安装：
 
-**推荐：便携安装到 vendor/**
-
-Windows：
-```bash
-# 方法 1：winget 安装后复制到 vendor/（推荐）
-winget install --id Graphviz.Graphviz --accept-source-agreements
-mkdir -p vendor/graphviz/bin
-cp "/c/Program Files/Graphviz/bin/"* vendor/graphviz/bin/
-
-# 方法 2：手动下载
-# 从 https://graphviz.org/download/ 下载 Windows 安装包，
-# 安装后将 bin/ 目录复制到 vendor/graphviz/bin/
-```
-
-macOS / Linux（系统安装也可以）：
-
-| 平台 | 安装命令 |
-|------|----------|
-| macOS | `brew install graphviz` |
-| Ubuntu/Debian | `sudo apt-get install -y graphviz` |
-| RHEL/CentOS | `sudo yum install -y graphviz` |
-| Arch | `sudo pacman -S --noconfirm graphviz` |
-
-feishu-creator 查找 `dot` 的优先级：`vendor/graphviz/bin/dot` → PATH → 系统已知路径。
-
-#### PlantUML
-
-**推荐：下载 jar 到 vendor/**
-
-1. 确保 Java 可用（如果没有）：
-   - Windows: `winget install --id EclipseAdoptium.Temurin.21.JRE --accept-source-agreements --accept-package-agreements`
-   - macOS: `brew install --cask temurin`
-   - Linux: `sudo apt-get install -y default-jre-headless`
-
-2. 下载 plantuml.jar：
-   ```bash
-   mkdir -p vendor
-   curl -fSL -o vendor/plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar
-   ```
-
-feishu-creator 会自动检测 `vendor/plantuml.jar` 并使用 `java -jar` 方式调用，无需额外配置。
-
-macOS / Linux 也可以用包管理器直装：`brew install plantuml`、`sudo apt-get install -y plantuml` 等。
-
-#### 安装验证
+| 工具 | Windows | macOS | Linux |
+|------|---------|-------|-------|
+| Graphviz | `winget install Graphviz.Graphviz` | `brew install graphviz` | `sudo apt-get install -y graphviz` |
+| PlantUML | `curl -fSL -o vendor/plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar` | 同左 | 同左 |
+| Java | `winget install EclipseAdoptium.Temurin.21.JRE` | `brew install --cask temurin` | `sudo apt-get install -y default-jre-headless` |
 
 安装后调用 `render_graphviz_diagram` 和 `render_plantuml_diagram` 验证。HTTP 模式下需先重启服务：`pm2 restart feishu-mcp --update-env`。
 

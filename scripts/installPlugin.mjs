@@ -281,6 +281,141 @@ function setupEnv() {
   console.log(`    FEISHU_APP_SECRET=your_secret`);
 }
 
+// ── diagram tools ───────────────────────────────────────────────────
+
+const VENDOR_DIR = path.join(REPO_ROOT, "vendor");
+const VENDOR_DOT = isWindows
+  ? path.join(VENDOR_DIR, "graphviz", "bin", "dot.exe")
+  : path.join(VENDOR_DIR, "graphviz", "bin", "dot");
+const VENDOR_PLANTUML_JAR = path.join(VENDOR_DIR, "plantuml.jar");
+
+const GRAPHVIZ_KNOWN_PATHS = isWindows
+  ? ["C:\\Program Files\\Graphviz\\bin\\dot.exe", "C:\\Program Files (x86)\\Graphviz\\bin\\dot.exe"]
+  : ["/usr/bin/dot", "/usr/local/bin/dot", "/opt/homebrew/bin/dot"];
+
+function findExistingDot() {
+  if (existsSync(VENDOR_DOT)) return VENDOR_DOT;
+  if (hasCommand("dot")) return "dot (PATH)";
+  for (const p of GRAPHVIZ_KNOWN_PATHS) {
+    if (existsSync(p)) return p;
+  }
+  return null;
+}
+
+function installGraphviz() {
+  const existing = findExistingDot();
+  if (existing) {
+    console.log(`  ✔ Graphviz already installed: ${existing}`);
+    return;
+  }
+
+  console.log(`  Graphviz not found, installing...`);
+
+  if (isWindows) {
+    // Try winget
+    if (hasCommand("winget")) {
+      const result = run(
+        "winget install --id Graphviz.Graphviz --accept-source-agreements --accept-package-agreements",
+      );
+      if (result !== null) {
+        // Copy to vendor/ for portable use
+        const systemBin = "C:\\Program Files\\Graphviz\\bin";
+        if (existsSync(systemBin)) {
+          mkdirSync(path.join(VENDOR_DIR, "graphviz", "bin"), { recursive: true });
+          cpSync(systemBin, path.join(VENDOR_DIR, "graphviz", "bin"), { recursive: true });
+          console.log(`  ✔ Graphviz installed and copied to vendor/`);
+          return;
+        }
+        console.log(`  ✔ Graphviz installed via winget (system path)`);
+        return;
+      }
+    }
+    console.log(`  ⚠ Could not install Graphviz automatically`);
+    console.log(`    Install manually: winget install Graphviz.Graphviz`);
+  } else if (process.platform === "darwin" && !isWSL) {
+    if (hasCommand("brew")) {
+      const result = run("brew install graphviz");
+      if (result !== null) {
+        console.log(`  ✔ Graphviz installed via brew`);
+        return;
+      }
+    }
+    console.log(`  ⚠ Could not install Graphviz automatically`);
+    console.log(`    Install manually: brew install graphviz`);
+  } else {
+    // Linux / WSL
+    const tried =
+      run("sudo apt-get install -y graphviz") ??
+      run("sudo yum install -y graphviz") ??
+      run("sudo pacman -S --noconfirm graphviz");
+    if (tried !== null) {
+      console.log(`  ✔ Graphviz installed`);
+      return;
+    }
+    console.log(`  ⚠ Could not install Graphviz automatically`);
+    console.log(`    Install manually: sudo apt-get install -y graphviz`);
+  }
+}
+
+function installPlantUml() {
+  if (hasCommand("plantuml")) {
+    console.log(`  ✔ PlantUML already installed: plantuml (PATH)`);
+    return;
+  }
+  if (existsSync(VENDOR_PLANTUML_JAR)) {
+    console.log(`  ✔ PlantUML already installed: ${VENDOR_PLANTUML_JAR}`);
+    return;
+  }
+
+  console.log(`  PlantUML not found, downloading plantuml.jar...`);
+  mkdirSync(VENDOR_DIR, { recursive: true });
+
+  const result = run(
+    `curl -fSL -o "${VENDOR_PLANTUML_JAR}" https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar`,
+  );
+  if (result !== null && existsSync(VENDOR_PLANTUML_JAR)) {
+    console.log(`  ✔ PlantUML downloaded to vendor/plantuml.jar`);
+  } else {
+    console.log(`  ⚠ Could not download PlantUML`);
+    console.log(`    Download manually: curl -fSL -o vendor/plantuml.jar https://github.com/plantuml/plantuml/releases/latest/download/plantuml.jar`);
+  }
+}
+
+function checkJava() {
+  if (hasCommand("java")) {
+    const version = run("java -version 2>&1", { silent: true });
+    const versionLine = version?.split("\n")[0] || "found";
+    console.log(`  ✔ Java available: ${versionLine}`);
+    return;
+  }
+
+  // Windows: scan known directories
+  if (isWindows) {
+    const knownDirs = ["C:\\Program Files\\Eclipse Adoptium", "C:\\Program Files\\Java", "C:\\Program Files\\Microsoft\\jdk"];
+    for (const dir of knownDirs) {
+      if (existsSync(dir)) {
+        console.log(`  ✔ Java found at ${dir} (not on PATH but auto-detected at runtime)`);
+        return;
+      }
+    }
+  }
+
+  console.log(`  ⚠ Java not found (needed for PlantUML, not for Graphviz)`);
+  if (isWindows) {
+    console.log(`    Install: winget install --id EclipseAdoptium.Temurin.21.JRE`);
+  } else if (process.platform === "darwin" && !isWSL) {
+    console.log(`    Install: brew install --cask temurin`);
+  } else {
+    console.log(`    Install: sudo apt-get install -y default-jre-headless`);
+  }
+}
+
+function installDiagramTools() {
+  installGraphviz();
+  installPlantUml();
+  checkJava();
+}
+
 // ── Claude Code plugin ──────────────────────────────────────────────
 
 function getMarketplaceDir() {
@@ -546,6 +681,7 @@ async function main() {
   if (!skipBuild) totalSteps++; // install & build
   else totalSteps++; // check dist
   totalSteps++; // .env
+  totalSteps++; // diagram tools
   if (!codexOnly) totalSteps++; // transport selection
   if (!codexOnly) totalSteps++; // claude plugin
   if (!claudeOnly) totalSteps++; // codex sync
@@ -575,6 +711,10 @@ async function main() {
   // ── Step: .env ──
   step("Environment configuration (.env)");
   setupEnv();
+
+  // ── Step: Diagram Tools ──
+  step("Diagram tools (Graphviz & PlantUML)");
+  installDiagramTools();
 
   // ── Step: Transport Selection ──
   let transport = "stdio";
