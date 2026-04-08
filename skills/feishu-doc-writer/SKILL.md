@@ -42,6 +42,7 @@ description: Write, rewrite, polish, and restructure Feishu documents and wiki n
 - 从对应模板中选取骨架结构。
 - 在合适的标题层级插入过渡章节，避免单个章节过载。
 - 短文档（< 5 节）使用扁平结构即可。
+- **图表前置规划（必须）：** 骨架完成后，立即逐章节标注哪些需要配图，确定图表类型（流程图/架构图/时序图等）。图表是骨架的一部分，不是内容写完后的补充。
 
 ### 5. 撰写内容
 
@@ -96,9 +97,13 @@ description: Write, rewrite, polish, and restructure Feishu documents and wiki n
 
 ### 7. 发布到飞书
 
-写作完成后，衔接 `feishu-doc-workflow` 发布：
+写作完成后，衔接 `feishu-doc-workflow` 发布。**文字与图表必须在同一轮发布中完成，不要分两轮。**
 
-- **新建文档**：`create_document` → `import_markdown_to_document`，或按章节逐段 `upsert_section`。
+- **新建文档**：`create_document` → 按章节交替写入文字和图表：
+  1. 先用 `import_markdown_to_document` 导入一个章节的文字内容。
+  2. 该章节如果在第 4 步标注了需要配图，紧接着用 `create_graphviz_diagram_block` 或 `create_plantuml_diagram_block` 插入图表。
+  3. 重复以上两步直到所有章节写完。
+  4. 如果内容无需配图，可以一次性 `import_markdown_to_document` 导入全部文字。
 - **更新已有文档**：`replace_section_blocks` 或 `upsert_section` 替换指定章节。
 - **发布后验证**：`export_document_to_markdown` 回读确认，检查格式是否完整。
 
