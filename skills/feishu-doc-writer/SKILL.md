@@ -70,19 +70,20 @@ description: Write, rewrite, polish, and restructure Feishu documents and wiki n
    | 分支决策逻辑（如果…则…否则…） | 流程图 | `create_graphviz_diagram_block` |
    | 数据流转路径（A→B→C） | 数据流图 | `create_graphviz_diagram_block` |
    | 时序交互（A 调用 B，B 回调 A） | 时序图 | `create_plantuml_diagram_block` |
-   | 状态变化流转 | 状态机图 | `create_graphviz_diagram_block` |
+   | 状态变化流转 | 状态机图 | `create_plantuml_diagram_block` |
+   | 类/实体间的属性与关联 | 类图 | `create_plantuml_diagram_block` |
+   | 角色与功能的对应关系 | 用例图 | `create_plantuml_diagram_block` |
 
    **不画图**：纯配置/操作步骤列表；用表格已足够清晰；节点/步骤不足 3 个。
 
    **渲染规范**（必须遵守，否则图表会模糊、乱码或过大）：
 
-   - **优先用 Graphviz**，仅时序图用 PlantUML。Graphviz 排版更紧凑、中文兼容性更好。
-   - **布局方向**：默认 `rankdir=LR`（横向）。仅当节点数 ≤ 5 且是纯线性链时才用 `rankdir=TB`（纵向）。
-   - **中文字体**：Graphviz 节点和边必须加 `fontname="Microsoft YaHei"`；PlantUML 必须加 `skinparam defaultFontName Microsoft YaHei`。不指定字体会导致中文乱码。
-   - **字号**：节点 `fontsize=11` 或 `12`，边 `fontsize=9` 或 `10`。
-   - **避免 PlantUML 活动图**：PlantUML 的 activity diagram 纵向占用极大，改用 Graphviz 流程图。PlantUML 仅用于时序图（`A -> B: message`）。
-   - **PlantUML 禁止 swimlane**：`|xxx|` 语法在无中文字体环境下会乱码，用 Graphviz subgraph cluster 替代。
-   - **分组用 subgraph cluster**：将相关节点放入 `subgraph cluster_xxx { label="分组名"; style=dashed; }` 中，视觉清晰。
+   - **引擎分工**：Graphviz 用于架构图、流程图、数据流图；PlantUML 用于时序图、状态机图、类图、用例图。
+   - **布局方向**：Graphviz 默认 `rankdir=LR`（横向）。仅当节点数 ≤ 5 且是纯线性链时才用 `rankdir=TB`（纵向）。
+   - **中文字体**：Graphviz 节点和边必须加 `fontname="Noto Sans CJK SC"`（或系统可用的 CJK 字体）；PlantUML 的中文字体由系统自动检测注入，无需手动指定 `skinparam defaultFontName`。
+   - **字号**：Graphviz 节点 `fontsize=11` 或 `12`，边 `fontsize=9` 或 `10`。
+   - **避免 PlantUML 活动图**：PlantUML 的 activity diagram 纵向占用极大，流程图一律用 Graphviz。
+   - **Graphviz 分组用 subgraph cluster**：将相关节点放入 `subgraph cluster_xxx { label="分组名"; style=dashed; }` 中，视觉清晰。
    - **节点样式**：`style="rounded,filled"` + 浅色 `fillcolor`（如 `#E3F2FD`、`#FFF3E0`、`#E8F5E9`），避免纯白。
    - **图表紧跟正文**：插入到对应正文段落之后，不要集中放在文档末尾。
 

@@ -268,11 +268,33 @@ async function assertExecutable(
 /*  Cross-platform font environment for Graphviz / PlantUML           */
 /* ------------------------------------------------------------------ */
 
+/** Platform-specific system font directories. */
+function getSystemFontDirs(): string[] {
+  const platform = process.platform;
+  if (platform === "win32") {
+    return ["C:\\Windows\\Fonts"];
+  } else if (platform === "darwin") {
+    return [
+      "/System/Library/Fonts",
+      "/Library/Fonts",
+      path.join(os.homedir(), "Library/Fonts"),
+    ];
+  }
+  // Linux and others
+  return [
+    "/usr/share/fonts",
+    "/usr/local/share/fonts",
+    path.join(os.homedir(), ".local/share/fonts"),
+    path.join(os.homedir(), ".fonts"),
+  ];
+}
+
 /**
  * Build extra env vars so renderers can find system CJK fonts.
  *
  * - GDFONTPATH: used by Graphviz's GD library to locate .ttf/.otf files.
  * - FONTCONFIG_PATH: used by fontconfig (Graphviz on Linux/macOS).
+ * - PLANTUML_FONT_DIR: used by PlantUML to locate additional fonts.
  *
  * Only sets a value when the env var is not already present, so user
  * overrides via .env are always respected.
@@ -283,29 +305,98 @@ function getRendererFontEnv(): Record<string, string> {
   if (_cachedFontEnv) return _cachedFontEnv;
 
   const env: Record<string, string> = {};
-  const platform = process.platform;
+  const fontDirs = getSystemFontDirs();
+  const sep = process.platform === "win32" ? ";" : ":";
 
-  // GDFONTPATH — semicolon-separated on Windows, colon on Unix
+  // GDFONTPATH — used by Graphviz's GD library
   if (!process.env.GDFONTPATH) {
-    if (platform === "win32") {
-      env.GDFONTPATH = "C:\\Windows\\Fonts";
-    } else if (platform === "darwin") {
-      env.GDFONTPATH = [
-        "/System/Library/Fonts",
-        "/Library/Fonts",
-        path.join(os.homedir(), "Library/Fonts"),
-      ].join(":");
-    } else {
-      // Linux and others
-      env.GDFONTPATH = [
-        "/usr/share/fonts",
-        "/usr/local/share/fonts",
-        path.join(os.homedir(), ".local/share/fonts"),
-        path.join(os.homedir(), ".fonts"),
-      ].join(":");
-    }
+    env.GDFONTPATH = fontDirs.join(sep);
+  }
+
+  // PLANTUML_FONT_DIR — PlantUML searches this directory for fonts.
+  // PlantUML only supports a single directory, so use the primary system path.
+  if (!process.env.PLANTUML_FONT_DIR) {
+    env.PLANTUML_FONT_DIR = fontDirs[0];
   }
 
   _cachedFontEnv = env;
   return env;
+}
+
+/* ------------------------------------------------------------------ */
+/*  CJK font detection & PlantUML font auto-injection                 */
+/* ------------------------------------------------------------------ */
+
+/** CJK font candidates in order of preference. */
+const CJK_FONT_CANDIDATES = [
+  "Microsoft YaHei",
+  "Noto Sans CJK SC",
+  "WenQuanYi Micro Hei",
+  "WenQuanYi Zen Hei",
+  "PingFang SC",
+  "SimHei",
+  "Source Han Sans SC",
+];
+
+const CJK_FALLBACK_FONT = "Noto Sans CJK SC";
+
+let _cachedCjkFont: string | undefined;
+
+/**
+ * Detect the best available CJK font on the system.
+ * Uses `fc-list` on Unix and falls back to a sensible default.
+ */
+function detectCjkFontName(): string {
+  if (_cachedCjkFont !== undefined) return _cachedCjkFont;
+
+  try {
+    const output = execSync("fc-list :lang=zh family", {
+      encoding: "utf8",
+      timeout: 5000,
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const available = output
+      .split("\n")
+      .map((line) => line.split(",")[0].trim())
+      .filter(Boolean);
+
+    for (const candidate of CJK_FONT_CANDIDATES) {
+      if (available.some((f) => f === candidate)) {
+        _cachedCjkFont = candidate;
+        return _cachedCjkFont;
+      }
+    }
+  } catch {
+    // fc-list not available (e.g. Windows without fontconfig) — use fallback
+  }
+
+  _cachedCjkFont = CJK_FALLBACK_FONT;
+  return _cachedCjkFont;
+}
+
+/** Regex matching CJK Unified Ideographs (common Chinese characters). */
+const CJK_CHAR_RE = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff]/;
+
+/**
+ * Auto-inject `skinparam defaultFontName` into PlantUML source when:
+ * 1. The source contains CJK characters, AND
+ * 2. No `skinparam defaultFontName` is already specified.
+ *
+ * Must be called AFTER `ensurePlantUmlDocument` (so `@startXXX` is present).
+ */
+export function ensurePlantUmlFontConfig(sourceText: string): string {
+  // Already has font config — respect the explicit setting
+  if (/skinparam\s+defaultFontName\b/i.test(sourceText)) {
+    return sourceText;
+  }
+  // No CJK characters — no need to inject
+  if (!CJK_CHAR_RE.test(sourceText)) {
+    return sourceText;
+  }
+  const fontName = detectCjkFontName();
+  // Inject after @startXXX line
+  return sourceText.replace(
+    /(@start[A-Za-z]+\b[^\n]*\n)/i,
+    `$1skinparam defaultFontName ${fontName}\n`,
+  );
 }

@@ -81,6 +81,7 @@ void startHomeOnAllDisplays(...) {
 | 概念介绍 | 3 个以上组件的层级关系 | 架构图（Graphviz，`rankdir=LR`，subgraph 分组） | `create_graphviz_diagram_block` |
 | 源码入口 | 涉及多个类/模块的入口调用 | 调用关系图（Graphviz，`rankdir=LR`） | `create_graphviz_diagram_block` |
 | 源码解析 | 主流程涉及 3 步以上 | 流程图（Graphviz，`rankdir=LR`） | `create_graphviz_diagram_block` |
+| 源码解析 | 类继承/接口实现关系 | 类图（PlantUML） | `create_plantuml_diagram_block` |
 | 关键子流程 | 异步回调、跨线程/进程交互 | 时序图（PlantUML，`A -> B: msg` 语法） | `create_plantuml_diagram_block` |
 
 ## 7. 注意事项

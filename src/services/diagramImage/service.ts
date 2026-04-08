@@ -3,6 +3,7 @@ import type { AppConfig } from "../../config.js";
 import type { DocumentEditService } from "../documentEdit/index.js";
 import {
   ensurePlantUmlDocument,
+  ensurePlantUmlFontConfig,
   normalizeRenderInput,
   resolveGraphvizCommand,
   resolvePlantUmlCommand,
@@ -73,7 +74,7 @@ export class DiagramImageService {
         ],
         label: "PlantUML",
       },
-      ensurePlantUmlDocument(normalized.sourceText),
+      ensurePlantUmlFontConfig(ensurePlantUmlDocument(normalized.sourceText)),
       normalized.outputPath,
     );
     return {
