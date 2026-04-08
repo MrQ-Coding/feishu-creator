@@ -26,7 +26,7 @@
 1. 登录 [飞书开放平台](https://open.feishu.cn/app?lang=zh-CN)，创建自建应用，添加 `docs:doc`、`wiki:wiki`、`drive:drive:readonly` 等权限，记录 App ID 和 App Secret。
 2. 让你的 AI 工具来完成安装：
 
-**Claude Code / Codex**（推荐）— 直接说：**"帮我安装 feishu-creator，仓库地址 https://github.com/MrQ-Coding/feishu-creator"**，内置的 `feishu-setup` skill 会自动完成克隆、构建、凭据配置、客户端接入和验证。安装后获得完整的 skills 工作流引导 + MCP 工具能力。
+**Claude Code / Codex**（推荐）— 直接说："帮我安装 feishu-creator，仓库地址 `https://github.com/MrQ-Coding/feishu-creator`"，内置的 `feishu-setup` skill 会自动完成克隆、构建、凭据配置、客户端接入和验证。安装后获得完整的 skills 工作流引导 + MCP 工具能力。
 
 **Cursor / Windsurf / 其他 MCP 客户端** — 克隆仓库后手动配置：
 
