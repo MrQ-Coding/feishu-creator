@@ -70,6 +70,5 @@ npm install && cp .env.example .env && npm run build
 | [feishu-creator-doc-workflow](./skills/feishu-creator-doc-workflow/SKILL.md) | 文档操作：创建、编辑、移动、复制、删除 |
 | [feishu-doc-writer](./skills/feishu-doc-writer/SKILL.md) | 内容写作：技术方案、设计文档、会议纪要、通用文档 |
 | [feishu-style-extract](./skills/feishu-style-extract/SKILL.md) | 写作风格分析与画像提取 |
-| [knowledge-qa](./skills/knowledge-qa/SKILL.md) | 知识库问答闭环：搜索 → 解决 → 记录 |
 
 环境变量见 [`.env.example`](./.env.example)。
