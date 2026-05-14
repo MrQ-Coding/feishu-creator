@@ -13,8 +13,5 @@ Feishu-MCP/
 # Temporary files
 tmp/
 
-# Knowledge index (auto-generated on startup)
-.knowledge/
-
 # Auto-downloaded tool binaries (plantuml.jar etc.)
 vendor/

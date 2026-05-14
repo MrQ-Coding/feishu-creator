@@ -9,7 +9,6 @@ import { registerDocumentExportTools } from "./tools/documentExportTools.js";
 import { registerDocumentMarkdownTools } from "./tools/documentMarkdownTools.js";
 import { registerWikiTools } from "./tools/wikiTools.js";
 import { registerStyleProfileTools } from "./tools/styleProfileTools.js";
-import { registerKnowledgeTools } from "./tools/knowledgeTools.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../../package.json") as { version: string };
@@ -32,7 +31,6 @@ export function createMcpServer(context: AppContext): McpServer {
   registerDocumentMarkdownTools(server, context);
   registerWikiTools(server, context);
   registerStyleProfileTools(server, context);
-  registerKnowledgeTools(server, context);
 
   return server;
 }

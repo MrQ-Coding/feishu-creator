@@ -31,7 +31,6 @@ import { SearchService } from "./services/search/index.js";
 import { StyleProfileService } from "./services/styleProfile/index.js";
 import { WikiBrowserDeletionService } from "./services/wikiBrowser/index.js";
 import { WikiSpaceService, WikiTreeService } from "./services/wiki/index.js";
-import { KnowledgeService } from "./services/knowledge/index.js";
 
 export interface RuntimeIdentity {
   scope: "global" | "http-session";
@@ -68,7 +67,6 @@ export interface AppContext {
   styleProfileService: StyleProfileService;
   wikiSpaceService: WikiSpaceService;
   wikiTreeService: WikiTreeService;
-  knowledgeService: KnowledgeService;
   shutdown(): Promise<void>;
 }
 
@@ -144,16 +142,6 @@ export function createAppContext(
     },
   );
 
-  const knowledgeService = new KnowledgeService(
-    searchService,
-    markdownDocumentService,
-    documentCreateService,
-    documentEditService,
-    wikiTreeService,
-    authManager,
-    config.knowledge.indexPath,
-  );
-
   const cleanupTimer = setInterval(() => {
     const blocksRemoved = documentBlockService.cleanupExpired();
     const docRemoved = documentInfoService.cleanupExpired();
@@ -211,7 +199,6 @@ export function createAppContext(
     styleProfileService,
     wikiSpaceService,
     wikiTreeService,
-    knowledgeService,
     shutdown,
   };
 }

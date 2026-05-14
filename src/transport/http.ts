@@ -116,7 +116,6 @@ function createHttpSessionConfig(
         headers.userRefreshTokenExpiresAt ??
         baseConfig.feishu.userRefreshTokenExpiresAt,
     },
-    knowledge: { ...baseConfig.knowledge },
   };
 }
 

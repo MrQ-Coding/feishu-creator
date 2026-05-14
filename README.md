@@ -15,7 +15,6 @@
 - **跨文档操作** — "把这段移到另一篇文档"、"把背景章节复制到设计文档里"
 - **图表与图片** — "画一个架构图插到文档里"、"加一个流程图"、"把这张截图上传到文档"
 - **表格** — "在文档里插一个对比表"、"更新表格第二行的数据"
-- **知识库** — "这个问题记录到知识库"、"搜一下之前怎么解决的"、"帮我建一下知识库索引"
 - **Wiki 管理** — "列出所有知识库空间"、"在 Wiki 里新建一个页面"、"把这个文档导出成 Markdown"
 - **文风** — "分析我的写作风格"、"按这个风格帮我重写"、"把风格画像保存到飞书"
 
@@ -57,7 +56,6 @@ npm install && cp .env.example .env && npm run build
 - 文档操作（创建/编辑/移动/删除）→ 读取 feishu-creator/skills/feishu-creator-doc-workflow/SKILL.md
 - 内容写作/起草 → 读取 feishu-creator/skills/feishu-doc-writer/SKILL.md
 - 写作风格分析 → 读取 feishu-creator/skills/feishu-style-extract/SKILL.md
-- 知识库问答 → 读取 feishu-creator/skills/knowledge-qa/SKILL.md
 ```
 
 ---

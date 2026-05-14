@@ -749,7 +749,7 @@ async function main() {
     console.log(`    Plugin  : feishu-creator@feishu-creator ✔`);
     console.log(`    MCP     : ${transport}${transport === "http" ? " (localhost:3333)" : ""}`);
     console.log(`    Skills  : feishu-setup, feishu-creator-doc-workflow,`);
-    console.log(`              feishu-doc-writer, feishu-style-extract, knowledge-qa`);
+    console.log(`              feishu-doc-writer, feishu-style-extract`);
     console.log(`    Action  : Restart Claude Code to load\n`);
   }
 
